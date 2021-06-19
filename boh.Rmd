@@ -1,0 +1,31 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(RcppAlgos)
+```
+
+
+```{r}
+comboSample(32, 2, n = 104, seed = 42)
+```
+
+```{r}
+glyc_resources <- c("glucose","fructose","xylose","mannose", "cellobiose", "sucrose", "maltose", "raffinose", "cellulose", "starch", "pectine", "lignine", "sorbitol", "xylitol", "mannitol", "glycerol", "histidine", "glycine","serine", "cysteine", "adenine", "uracil")
+
+gluc_resources <- c("citrate", "fumarate", "succinate", "acetate", "pyruvate","oxoglutarate", "malate", "proline", "aspartate", "glutamate", "lysine", "methionine", "leucine", "arginine", "threonine")
+
+other_resources <- c("valine", "tryptophan", "galacturonate", "glucuronate")
+
+length(glyc_resources)
+length(gluc_resources)
+length(other_resources)
+```
+
+```{r}
+comboSample(glyc_resources, 6, n = 26, seed = 42)
+```
+

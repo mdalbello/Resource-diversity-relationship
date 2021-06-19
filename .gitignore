@@ -34,3 +34,13 @@ vignettes/*.pdf
 # Temporary files created by R markdown
 *.utf8.md
 *.knit.md
+
+.DS_Store
+
+# HTML
+*.html
+
+# Ignore explicit files
+AllData_day7.csv
+All_data_withsamples.csv
+Time_series_data.csv

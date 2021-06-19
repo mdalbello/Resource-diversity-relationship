@@ -1,0 +1,353 @@
+---
+title: "Obtaining working datasets from phyloseq object"
+output: html_notebook
+---
+
+### Creating phyloseq object
+
+```{r}
+library(phyloseq); packageVersion("phyloseq")
+library(ggplot2); packageVersion("ggplot2")
+library(tidyverse)
+library(RColorBrewer)
+```
+
+### Set color palette for graphics
+
+```{r}
+pal = "Spectral"
+scale_colour_discrete <-  function(palname=pal, ...){
+  scale_colour_brewer(palette=palname, ...)
+}
+scale_fill_discrete <-  function(palname=pal, ...){
+  scale_fill_brewer(palette=palname, ...)
+}
+```
+
+
+Re-load sequencing data and assigned taxonomy
+```{r Phyloseq object}
+
+seqtabMNoC <- readRDS("./Data_Phyloseq_object/seqtabMNoC.rds")
+SilvaTax <- readRDS("./Data_Phyloseq_object/SilvaTax.rds")
+
+seqtabMNoC_labeled <- seqtabMNoC
+colnames(seqtabMNoC_labeled) <- paste0("ASV", 1:ncol(seqtabMNoC_labeled))
+SilvaTax_labeled <- SilvaTax 
+rownames(SilvaTax_labeled) <- paste0("ASV", 1:nrow(SilvaTax_labeled))
+
+```
+
+
+If you have obtained a tree, load it
+```{r}
+out_name <- "my_alignment"
+tree <- read_tree(paste0("./Data_Phyloseq_object/RAxML_bipartitionsBranchLabels.", out_name))
+```
+
+
+Load metadata (variables you need to analyze the data)
+```{r}
+metadata <- read.table("./Data_Phyloseq_object/metadata_1.txt", header=T)
+samples.out <- rownames(seqtabMNoC)
+rownames(metadata) <- samples.out
+metadata$FC_number <- factor(metadata$C_number)
+
+OD_data <- read.table("./Data_Phyloseq_object/OD_day7.txt", header=T)
+```
+
+### Finally, assemble all the data in a Phyloseq object
+
+```{r}
+#phyloseq object with SILVA SSU taxonomy
+psSilva <- phyloseq(otu_table(seqtabMNoC_labeled, taxa_are_rows=FALSE),
+                    sample_data(metadata),
+                    tax_table(SilvaTax_labeled),
+                    phy_tree(tree))
+
+```
+
+### Remove poor-quality samples
+
+```{r}
+# Check read distribution of samples
+sample_sums(psSilva) 
+
+```
+Samples have quite a even distribution of reads (homogeneous numbers).
+However there are a few of them with very low reads (10)
+
+
+```{r}
+ps = prune_samples(sample_sums(psSilva)>2420, psSilva) # prune samples with low reads
+
+summary(sample_sums(ps))
+
+sample_sum_df <- data.frame(sum = sample_sums(ps))
+
+```
+
+
+Check out histogram of sample read counts
+```{r}
+p_sample_depth <- ggplot(sample_sum_df, aes(x = sum)) +
+  geom_histogram(color = "black", fill = "indianred", binwidth = 2500) +
+  ggtitle("Distribution of sample sequencing depth") +
+  xlab("Read counts") #+
+    theme(axis.title.y = element_blank())
+p_sample_depth
+
+```
+
+# Produce data for community diversity analysis
+
+Retain only samples from day7 (repeated samples were assigned day=NA in order to exclude them) and
+remove data from H2O and M9
+```{r}
+ps_day7 <- subset_samples(ps, dilution_day==7) 
+
+ps_to_use = subset_samples(ps_day7, how_many != "H2O")
+ps_to_use = subset_samples(ps_to_use, how_many != "M9")
+
+```
+
+
+### Calculate various diversity measures using built-in phyloseq and custom functions
+
+```{r Estimate diversity measures custom}
+estimate_richness_custom <- function (physeq, split = TRUE, measures = NULL) 
+{
+    if (!any(otu_table(physeq) == 1)) {
+        warning("The data you have provided does not have\n", 
+            "any singletons. This is highly suspicious. Results of richness\n", 
+            "estimates (for example) are probably unreliable, or wrong, if you have already\n", 
+            "trimmed low-abundance taxa from the data.\n", "\n", 
+            "We recommended that you find the un-trimmed data and retry.")
+    }
+    if (!split) {
+        OTU <- taxa_sums(physeq)
+    }
+    else if (split) {
+        OTU <- as(otu_table(physeq), "matrix")
+        if (taxa_are_rows(physeq)) {
+            OTU <- t(OTU)
+        }
+    }
+    renamevec = c("Observed", "Chao1", "ACE", "Shannon", "Simpson", 
+        "InvSimpson", "Fisher","FaithPD")
+    names(renamevec) <- c("S.obs", "S.chao1", "S.ACE", "shannon", 
+        "simpson", "invsimpson", "fisher","FaithPD")
+    if (is.null(measures)) {
+        measures = as.character(renamevec)
+    }
+    if (any(measures %in% names(renamevec))) {
+        measures[measures %in% names(renamevec)] <- renamevec[names(renamevec) %in% 
+            measures]
+    }
+    if (!any(measures %in% renamevec)) {
+        stop("None of the `measures` you provided are supported. Try default `NULL` instead.")
+    }
+    outlist = vector("list")
+    estimRmeas = c("Chao1", "Observed", "ACE")
+    if (any(estimRmeas %in% measures)) {
+        outlist <- c(outlist, list(t(data.frame(estimateR(OTU)))))
+    }
+    if ("Shannon" %in% measures) {
+        outlist <- c(outlist, list(shannon = diversity(OTU, index = "shannon")))
+    }
+    if ("Simpson" %in% measures) {
+        outlist <- c(outlist, list(simpson = diversity(OTU, index = "simpson")))
+    }
+    if ("InvSimpson" %in% measures) {
+        outlist <- c(outlist, list(invsimpson = diversity(OTU, 
+            index = "invsimpson")))
+    }
+    if( "FaithPD" %in% measures){
+  	outlist <- c(outlist, list(FaithPD = t(picante::pd(samp = OTU, tree = phy_tree(physeq), include.root = F))[1,] ))
+    }
+    if ("Fisher" %in% measures) {
+        fisher = tryCatch(fisher.alpha(OTU, se = TRUE), warning = function(w) {
+            warning("phyloseq::estimate_richness: Warning in fisher.alpha(). See `?fisher.fit` or ?`fisher.alpha`. Treat fisher results with caution")
+            suppressWarnings(fisher.alpha(OTU, se = TRUE)[, c("alpha", 
+                "se")])
+        })
+        if (!is.null(dim(fisher))) {
+            colnames(fisher)[1:2] <- c("Fisher", "se.fisher")
+            outlist <- c(outlist, list(fisher))
+        }
+        else {
+            outlist <- c(outlist, Fisher = list(fisher))
+        }
+    }
+    out = do.call("cbind", outlist)
+    namechange = intersect(colnames(out), names(renamevec))
+    colnames(out)[colnames(out) %in% namechange] <- renamevec[namechange]
+    colkeep = sapply(paste0("(se\\.){0,}", measures), grep, colnames(out), 
+        ignore.case = TRUE)
+    out = out[, sort(unique(unlist(colkeep))), drop = FALSE]
+    out <- as.data.frame(out)
+    return(out)
+}
+```
+
+Calculate
+
+```{r}
+D0 <- estimate_richness(ps_to_use,split=TRUE, measures="Observed")
+shannon_Silva <- estimate_richness(ps_to_use, measures="Shannon")
+D1 <- exp(shannon_Silva)
+simpson_div_Silva <- estimate_richness(ps_to_use, measures="Simpson")
+D2 <- estimate_richness(ps_to_use, measures="InvSimpson")
+ACE <- estimate_richness(ps_to_use, measures="ACE")
+FaithPD <- estimate_richness_custom(ps_to_use, measures="FaithPD")
+std_PD <- FaithPD/D0
+```
+
+D0 is actual species richness, D1 is the antilog of Shannon entropy and D2 is the inverse of Simpson Index. ACE provides an error. FaithPD is a measure of phylogenetic diversity.
+
+
+**Calculate number of families as a measure of richness at a lower taxonomic level**
+```{r}
+# Create a factor corresponding to the Family
+fam_fac = factor(tax_table(ps_to_use)[, "Family"])
+
+# Tabulate the counts for each family in each sample
+fam_tab = apply(t(otu_table(ps_to_use)), MARGIN = 2, function(x) {
+  tapply(x, INDEX = fam_fac, FUN = sum, na.rm = TRUE, simplify = TRUE)
+})
+#head(fam_tab)[, 1:10]
+
+# To get number of non-zero families per sample, sum the values that are above your threshold, in my case, 1.
+observationThreshold = 1
+fam_richness <- apply(fam_tab > observationThreshold, 2, sum)
+
+```
+
+
+**Calculate richness at 0.1 abundance threshold**
+*psmelt* function produces a datasets with all the data contained in the phyloseq object
+```{r}
+ps_to_use_RA <-  transform_sample_counts(ps_to_use, function(x) {x / sum(x)} )  # transform to relative abundance
+df_ALL_RA <- psmelt(ps_to_use_RA)  #melt
+
+count_fun <- function(x){
+  sum(x>0.001) 
+}
+sp.rich_0.1 <- by(df_ALL_RA$Abundance, df_ALL_RA$Sample, count_fun, simplify=TRUE)
+sp.rich_0.1_bis <- lapply(sp.rich_0.1 , mean)
+sp.rich_0.1_unlisted <- unlist(sp.rich_0.1_bis)
+```
+
+
+### Create a tibble suitable for analyses
+
+```{r}
+diversity_data <- data.frame(sample_data(ps_to_use), D0 = D0$Observed, D1 = D1$Shannon, D2 = D2$InvSimpson, shannon = shannon_Silva$Shannon, FaithPD = FaithPD$FaithPD, OD=OD_data$OD*10, D0_family=fam_richness, D0_0.1=sp.rich_0.1_unlisted, std_PD = std_PD$FaithPD )
+
+
+#write.csv(diversity_data, "Diversity_data.csv")
+
+diversity_tib <- as_tibble(diversity_data)
+```
+
+
+Sanity check for estimate_richness function: it should reproduce the same results as:
+```{r}
+df_ALL <- psmelt(ps_to_use)
+count_fun <- function(x){
+  sum(x>0) 
+}
+sp.rich <- by(df_ALL$Abundance, df_ALL$Sample, count_fun)
+
+```
+
+
+For Figure 2 I need to specify sets of three replicates for 16 communities to avoid inflating the number of species in each group (generalists, specialists and intermediates).
+
+```{r}
+df_ALL_16C <- filter (df_ALL, C_number==16)
+df_ALL_16C <- as_tibble(df_ALL_16C)
+
+
+df_ALL_16C <- df_ALL_16C %>% 
+  mutate(medium = case_when(
+    rep == "a"  | rep == "b" | rep == "c"  ~ "80" ,
+    rep == "d"  | rep == "e" | rep == "f"  ~ "81" ,
+    rep == "g"  | rep == "h" | rep == "i"  ~ "82"  
+  )
+)
+
+```
+
+
+
+### SAVE ALL DATA for day 7!!!
+
+```{r}
+write.csv(df_ALL, "AllData_day7.csv")
+```
+
+
+# Produce data for time series analysis
+
+Retain only samples from day7 (repeated samples were assigned day=NA in order to exclude them) and
+remove data from H2O and M9
+```{r}
+ps_TS <- subset_samples(ps, dilution_day!=8) 
+
+# remove soil samples and data from H2O and M9 (some might be redundant)
+ps_TS <-  subset_samples(ps_TS, C_number != 17)
+ps_TS <- subset_samples(ps_TS, dilution_day!=0) 
+ps_TS <- subset_samples(ps_TS, C_number != 0)
+
+# remove uncharacterized taxa
+ps_TS_noNA <- subset_taxa(ps_TS, !is.na(Family) & !Family %in% c("", "uncharacterized"))
+
+ps_TS_toUSE <- ps_TS_noNA
+
+```
+
+Reduce families to a number that can be represented
+
+```{r}
+#Transform to Relative Abundance
+ps_TS_toUSE_RA <-  transform_sample_counts(ps_TS_toUSE, function(x) {x / sum(x)} )
+
+#Generate prevalence table (number of samples each taxa occurs in) for each taxa.
+prevelancedf = apply(X = t(otu_table(ps_TS_toUSE_RA)),
+                     MARGIN = 1,
+                     FUN = function(x){sum(x > 0)})
+# Add taxonomy and total read counts to this data.frame
+prevelancedf = data.frame(Prevalence = prevelancedf,
+                          TotalAbundance = taxa_sums(ps_TS_toUSE_RA),
+                          tax_table(ps_TS_toUSE_RA))
+
+prevalenceThreshold = 0.01 * nsamples(ps_TS_toUSE_RA)
+prevalenceThreshold  #3.46 (37 families + Others)
+
+Taxa2keep_df <- prevelancedf[prevelancedf$Prevalence >= prevalenceThreshold,]
+Families2Keep <- as.vector(unique(Taxa2keep_df$Family))
+length(Families2Keep)
+
+Taxa2exclude_df <- prevelancedf[prevelancedf$Prevalence < prevalenceThreshold,]
+Families2exclude <- as.vector(unique(Taxa2exclude_df$Family))
+length(Families2exclude)
+
+taxa_ps_TS_toUSE_RA <- tax_table(ps_TS_toUSE_RA) %>%
+  data.frame(stringsAsFactors = FALSE)
+taxa_ps_TS_toUSE_RA$seq <- rownames(taxa_ps_TS_toUSE_RA)
+
+taxa_ps_TS_toUSE_RA$Family[!(taxa_ps_TS_toUSE_RA$Family %in% Families2Keep)] <- "Z_Other"
+taxa_ps_TS_toUSE_RA$Family <- factor(taxa_ps_TS_toUSE_RA$Family, levels = c(Families2Keep, "Z_Other"))
+taxa_ps_TS_toUSE_RA$otu_id <- seq_len(ncol(otu_table(ps_TS_toUSE_RA)))
+tax_table(ps_TS_toUSE_RA)[,"Family"] <- as.vector(taxa_ps_TS_toUSE_RA$Family)
+```
+
+### Obtain flattened table
+
+```{r}
+df_TS <- psmelt(ps_TS_toUSE_RA)
+
+write.csv(df_TS, "Time_series_data.csv")
+```
+

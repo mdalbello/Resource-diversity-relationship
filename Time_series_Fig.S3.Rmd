@@ -1,0 +1,190 @@
+---
+title: "Times series - Fig. S3"
+output: html_notebook
+---
+
+```{r}
+library(ggplot2)
+library(plotrix)
+library(RColorBrewer)
+library(tidyverse)
+library(dplyr)
+```
+
+```{r}
+families_fac = factor(tax_table(ps_TS_toUSE_RA)[, "Family"])
+colourCount_fam <- length(unique(families_fac))
+
+```
+
+### Obtain plots
+
+```{r}
+# df_TS %>%
+#   filter(rep == "a" & C_number == 1) %>%
+#   group_split(medium) 
+
+df_TS_1C_a <- df_TS %>%
+  filter(rep == "a" & C_number == 1)
+
+p_TS <- ggplot(df_TS_1C_a, aes(dilution_day, Abundance, fill=Family))+
+  geom_col(position = position_stack(reverse = TRUE))+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(colourCount_fam))+
+  theme_light() +
+  theme(legend.position="none")+
+  facet_wrap(~ medium)
+p_TS
+```
+
+
+```{r}
+ps_TS_1C_a <- subset_samples(ps_TS_toUSE, rep == "a" & C_number == 1)
+
+D0 <- estimate_richness(ps_TS_1C_a,split=TRUE, measures="Observed")
+shannon_Silva <- estimate_richness(ps_TS_1C_a, measures="Shannon")
+D1 <- exp(shannon_Silva)
+simpson_div_Silva <- estimate_richness(ps_TS_1C_a, measures="Simpson")
+D2 <- estimate_richness(ps_TS_1C_a, measures="InvSimpson")
+ACE <- estimate_richness(ps_TS_1C_a, measures="ACE")
+FaithPD <- estimate_richness_custom(ps_TS_1C_a, measures="FaithPD")
+
+TS_diversity_data <- data.frame(sample_data(ps_TS_1C_a), D0 = D0$Observed, D1 = D1$Shannon, D2 = D2$InvSimpson, shannon = shannon_Silva$Shannon, FaithPD = FaithPD$FaithPD)
+
+TS_diversity_tb <- as_tibble(TS_diversity_data)
+
+# df_TS %>%
+#     filter(rep == "a" & C_number == 1) %>%
+#     group_split(medium)
+
+```
+
+### Add richness line to bar plot of community structure
+
+```{r}
+df_TS_1C_a_ord <- df_TS_1C_a %>%
+  arrange(medium, dilution_day)
+
+TS_diversity_tb_ord <- TS_diversity_tb %>%
+  arrange(medium, dilution_day)
+
+count_groups <- df_TS_1C_a %>%
+  group_by(medium, dilution_day) %>%
+  summarize(count = n())
+
+#2502
+
+df_TS_1C_a_ord$richness <- rep(c(TS_diversity_tb_ord$D0), each = 2502)
+
+df_TS_1C_a_ord <- df_TS_1C_a_ord%>%
+  mutate(resource = case_when(medium=="43"~"43_glucose",
+                            medium=="44"~"44_fructose",
+                            medium=="45"~"45_xylose",
+                            medium=="46"~"46_mannose",
+                            medium=="47"~"47_cellobiose",
+                            medium=="48"~"48_maltose",
+                            medium=="49"~"49_sucrose",
+                            medium=="50"~"50_citrate",
+                            medium=="51"~"51_fumarate",
+                            medium=="52"~"52_galacturonate",
+                            medium=="53"~"53_mannitol",
+                            medium=="54"~"54_sorbitol",
+                            medium=="55"~"55_glycerol",
+                            medium=="56"~"56_proline",
+                            medium=="57"~"57_cellulose",
+                            medium=="58"~"58_starch"
+                            ))
+```
+
+Plot
+
+```{r}
+# df_TS_1C_a_nest <- df_TS_1C_a_ord %>% 
+#   nest(data = ! c(dilution_day, medium)) %>%
+#   add_column(richness = TS_diversity_tb_ord$D0)
+
+scl = 1/(max(df_TS_1C_a_ord$richness))
+
+p_TS <- ggplot(df_TS_1C_a_ord , aes(x = dilution_day))+
+  geom_col(aes(y = Abundance, fill=Family), position = position_stack(reverse = TRUE))+
+  geom_point(aes(y = richness*scl), size = 1)+
+  geom_line(aes(y = richness*scl), size = 0.2)+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(colourCount_fam))+
+  theme_light() +
+  theme(legend.position="none")+
+  scale_y_continuous( name = "Relative Abundance", 
+                     sec.axis = sec_axis(~./scl, name = "Richness"))+
+  facet_wrap(~ resource)
+p_TS
+
+```
+### Both 1 and 16C communities
+```{r}
+df_TS_1_16C <- df_TS %>%
+  filter((C_number == 1 & (rep == "a")) |  (C_number == 16 & (rep == "a"| rep == "b"| rep =="c" | rep == "d")))
+
+ps_TS_1_16C <- ps_TS_toUSE %>%
+  subset_samples((C_number == 1 & (rep == "a")) |  (C_number == 16 & (rep == "a"| rep == "b"| rep =="c" | rep == "d")))
+
+D0 <- estimate_richness(ps_TS_1_16C,split=TRUE, measures="Observed")
+shannon_Silva <- estimate_richness(ps_TS_1_16C, measures="Shannon")
+D1 <- exp(shannon_Silva)
+simpson_div_Silva <- estimate_richness(ps_TS_1_16C, measures="Simpson")
+D2 <- estimate_richness(ps_TS_1_16C, measures="InvSimpson")
+ACE <- estimate_richness(ps_TS_1_16C, measures="ACE")
+FaithPD <- estimate_richness_custom(ps_TS_1_16C, measures="FaithPD")
+
+TS_diversity_data <- data.frame(sample_data(ps_TS_1_16C), D0 = D0$Observed, D1 = D1$Shannon, D2 = D2$InvSimpson, shannon = shannon_Silva$Shannon, FaithPD = FaithPD$FaithPD)
+TS_diversity_tb <- as_tibble(TS_diversity_data)
+
+df_TS_1_16C_ord <- df_TS_1_16C %>%
+  arrange(rep, medium, dilution_day)
+
+TS_diversity_tb_ord <- TS_diversity_tb %>%
+  arrange(rep, medium, dilution_day)
+
+
+```
+
+And now plot!
+
+```{r}
+count_groups <- df_TS_1_16C %>%
+  group_by(rep, medium, dilution_day) %>%
+  summarize(count = n())
+#2502
+df_TS_1_16C_ord$richness <- rep(c(TS_diversity_tb_ord$D0), each = 2502)
+
+scl = 1/(max(df_TS_1_16C_ord$richness))
+
+p_TS <- ggplot(df_TS_1_16C_ord, aes(x = dilution_day))+
+  geom_col(aes(y = Abundance, fill=Family), position = position_stack(reverse = TRUE))+
+  #geom_point(aes(y = richness*scl), size = 1)+
+  geom_line(aes(y = richness*scl), size = 0.2)+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(colourCount_fam))+
+  theme_light() +
+  theme(legend.position="bottom")+
+  scale_y_continuous( name = "Relative Abundance", 
+                     sec.axis = sec_axis(~./scl, name = "Richness"))+
+  facet_wrap(rep ~ medium, ncol =4 )
+p_TS
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

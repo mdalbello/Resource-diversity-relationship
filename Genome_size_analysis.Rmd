@@ -1,0 +1,223 @@
+---
+title: "Average genome size of single resource communities"
+output: html_notebook
+---
+
+
+
+```{r Load packages}
+library(ggplot2); packageVersion("ggplot2")
+library(plotrix)
+library(RColorBrewer)
+library(tidyverse)
+library(vegan)
+library(reshape2)
+library(gridExtra)
+library(grid)
+
+
+```
+
+### Load inferred metagenomic data
+
+```{r}
+gene_dat <- read.csv("./Other_data/KO_predicted.csv", header=T)
+
+```
+
+### Determine ASVs with nonzero abundance in single resources
+
+```{r}
+ps_to_use_AllKnown <- subset_taxa(ps_to_use, !is.na(Phylum) & !Phylum %in% c("", "uncharacterized"))
+ps_to_use_RA <-  transform_sample_counts(ps_to_use_AllKnown, function(x) {x / sum(x)} )  # transform to relative abundance
+df_ALL_RA <- psmelt(ps_to_use_RA)  #melt
+
+df_ALL_RA_1C <- filter(df_ALL_RA, C_number == 1)
+
+abundance_threshold = 0  #change to 0.001 to leave out low abund ASVs
+
+ASV_SumAbund_1C <- df_ALL_RA_1C %>%
+   group_by(OTU) %>%
+   summarise(ASV_SumAbund = sum(Abundance,na.rm=TRUE))
+
+ASV_SumAbund_1C_no0 <- filter(ASV_SumAbund_1C, ASV_SumAbund > abundance_threshold)
+ASVtoKeep <- ASV_SumAbund_1C_no0$OTU
+```
+
+### Filter for ASVs present in single resources
+In single resources there are 275 ASVs in total (10 identified as generalists, 49 as intermediates and 216 as specialists)
+In Akshit's file there are 260 of the 275 ASVs seen in single resources: those that could be reconstructed by PYCRUST
+
+```{r}
+gene_dat_1C <- gene_dat[gene_dat$sequence %in% ASVtoKeep, , drop = FALSE]
+
+gene_dat_1C[ , 2:10544 ][ gene_dat_1C[ , 2:10544 ] >0 ]<- 1
+```
+
+### Calculate genome size
+Count how many genes (do not double count copies) each ASVs is estimated to display. Add gene info to the flat datasets
+
+```{r}
+genome_size <- gene_dat_1C %>%
+   mutate(gene_count = rowSums(across(where(is.numeric)))) %>%
+   mutate(OTU = gene_dat_1C$sequence)
+
+genome_size_dat <- left_join(df_ALL_RA_1C, genome_size, by = "OTU")
+
+```
+
+### Calculate average genome size of each single resource community
+
+```{r}
+community_gen_size_r <- genome_size_dat %>%
+   group_by(medium, rep) %>%
+   summarise (mean_gen_size = mean(gene_count[Abundance > 0], na.rm = T ),
+              med_gen_size = median(gene_count[Abundance > 0], na.rm = T ),
+              Wmean_gen_size = weighted.mean(gene_count, Abundance, na.rm = T ),
+              var_gen_size = sd(gene_count[Abundance > 0], na.rm = T ),
+              SE_gen_size = std.error(gene_count[Abundance > 0], na.rm = T ))
+community_gen_size_r
+
+community_gen_size_m <- community_gen_size_r %>%
+   group_by (medium) %>%
+   summarize(mean_median = mean(med_gen_size),
+             SE_median = std.error(med_gen_size),
+             mean_WM = mean(Wmean_gen_size),
+             SE_WM = std.error(Wmean_gen_size))
+community_gen_size_m
+```
+
+### Calculate metabolic overlap
+
+```{r}
+gene_dat_1C <- gene_dat[gene_dat$sequence %in% ASVtoKeep, , drop = FALSE]
+gene_dat_1C[ , 2:10544 ][ gene_dat_1C[ , 2:10544 ] >0 ]<- 1
+
+gene_dat_1C <- gene_dat_1C %>%
+   rename(OTU = sequence)
+
+full_flat_dat <- left_join(df_ALL_RA_1C, gene_dat_1C, by = "OTU")
+full_flat_dat
+```
+Forse c'ho preso con la funzione
+
+```{r}
+calculate_mean_jaccard <- function(dat) mean(philentropy::distance(dat, method = "jaccard", use.row.names = TRUE, as.dist.obj = TRUE))
+
+mean_jac_dat <- full_flat_dat %>%
+  group_by(medium, rep) %>%
+  filter (Abundance > 0) %>%
+  select(starts_with("K0")) %>%
+  nest %>%
+  mutate(mean_jac = map(data, calculate_mean_jaccard))
+
+jac_medium <- group_by(mean_jac_dat %>% unnest(mean_jac), medium) %>% 
+   summarise(mean_jac_m = mean(1- mean_jac),
+             SE_jac_m = std.error(mean_jac))
+
+
+p_overlap <- ggplot(data=jac_medium, aes(x=medium, y=mean_jac_m, fill=medium)) +
+  geom_bar( stat="identity", alpha=.8, width=.4) +
+  geom_errorbar(aes(x=medium, y=mean_jac_m, fill=medium, ymin=mean_jac_m-SE_jac_m, ymax=mean_jac_m+SE_jac_m), width=0, position=position_identity()) +
+  theme_light() +
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(16)) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position="none"
+  )
+p_overlap
+
+```
+### What to plot
+You can choose to plot the weighted mean genome size or the median (these measures make more sense to me) as a function of the fraction of specialists/generalists or total richness.
+
+```{r}
+strategies_Xmedium_1C_df_size <- strategies_Xmedium_1C_df %>%
+   mutate (fraction = (mean_n/tot_richness)*100) %>%
+   mutate (medium = factor(medium)) %>%
+   left_join(community_gen_size_m, by = "medium") %>%
+   left_join(jac_medium, by = "medium")
+strategies_Xmedium_1C_df_size
+
+strategies_Xmedium_1C_df_size_spec <- strategies_Xmedium_1C_df_size %>%
+   filter (strategy == "Spec")
+
+# p_rich_size <- ggplot(data=strategies_Xmedium_1C_df_size_gen, aes(tot_richness, y=mean_WM, fill=medium))+
+#   geom_smooth(method = "lm", linetype="dashed", color="#990000")+
+#   geom_point(size=5, shape =21)+
+#   theme_light()+
+#   scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(16))+
+#   labs(y = "Number of metabolic genes (median)", x="Richness")
+# p_rich_size
+
+
+p_rich_WM <- ggplot(data=strategies_Xmedium_1C_df_size_spec, aes(tot_richness, y=mean_WM, fill=medium))+
+  geom_errorbar(aes(x=tot_richness, y=mean_WM, fill=medium, ymin=mean_WM-SE_WM, ymax=mean_WM+SE_WM), width=0, position=position_identity()) +
+  geom_point(size=5, shape =21, alpha =.8 )+
+  theme_light()+
+  geom_abline(aes(intercept=2127.600, slope=-10.077), linetype="dashed", color="#990000")+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(16))+
+  labs(y = "Abundance weighted mean genome size", x="Richness")+
+  theme(legend.position="none")
+p_rich_WM
+
+p_rich_median <- ggplot(data=strategies_Xmedium_1C_df_size_spec, aes(tot_richness, y=mean_median, fill=medium))+
+  geom_errorbar(aes(x=tot_richness, y=mean_median, fill=medium, ymin=mean_median-SE_median, ymax=mean_median+SE_median), width=0, position=position_identity()) +
+  geom_point(size=5, shape =21, alpha =.8 )+
+  theme_light()+
+  geom_abline(aes(intercept=1905.193, slope=-7.027), linetype="dashed", color="#990000")+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(16))+
+  labs(y = "Average median genome size", x="Richness")+
+  theme(legend.position="none")
+p_rich_median
+
+p_rich_overlap <- ggplot(data=strategies_Xmedium_1C_df_size_spec, aes(tot_richness, y=mean_jac_m, fill=medium))+
+  geom_errorbar(aes(x=tot_richness, y=mean_jac_m, fill=medium, ymin=mean_jac_m-SE_jac_m, ymax=mean_jac_m+SE_jac_m), width=0, position=position_identity()) +
+  geom_point(size=5, shape =21, alpha =.8 )+
+  theme_light()+
+  geom_abline(aes(intercept=0.5888008, slope=-0.0021306), linetype="dashed", color="#990000")+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(16))+
+  labs(y = "Average metabolic overlap", x="Richness")+
+  theme(legend.position="none")
+p_rich_overlap
+
+
+
+p_fracSpec_WM <- ggplot(data=strategies_Xmedium_1C_df_size_spec, aes(fraction, y=mean_WM, fill=medium))+
+  geom_errorbar(aes(x=fraction, y=mean_WM, fill=medium, ymin=mean_WM-SE_WM, ymax=mean_WM+SE_WM), width=0, position=position_identity()) +
+  geom_point(size=5, shape=21, alpha =.8 )+
+  theme_light()+
+  #geom_smooth(method = "lm", linetype="dashed", color="#990000")+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(16))+
+  labs(y = "Abundance weighted mean genome size", x="Fraction of specialists in the community")
+p_fracSpec_WM
+
+p_fracSpec_overlap <- ggplot(data=strategies_Xmedium_1C_df_size_spec, aes(fraction, y=mean_jac_m, fill=medium))+
+  geom_errorbar(aes(x=fraction, y=mean_jac_m, fill=medium, ymin=mean_jac_m-SE_jac_m, ymax=mean_jac_m+SE_jac_m), width=0, position=position_identity()) +
+  geom_point(size=5, shape =21, alpha =.8 )+
+  theme_light()+
+  #geom_smooth(method = "lm", linetype="dashed", color="#990000")+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(16))+
+  labs(y = "Average metabolic overlap", x="Fraction of specialists in the community")
+p_fracSpec_overlap
+```
+
+```{r}
+LM_genesize <- lm(mean_jac_m ~ tot_richness, data=strategies_Xmedium_1C_df_size_spec)
+summary(LM_genesize)
+```
+
+```{r}
+grid.arrange(
+  p_rich_WM,
+  p_rich_median,
+  p_rich_overlap,
+  nrow = 1,
+  ncol = 3,
+  top = ""
+  )
+
+```
+

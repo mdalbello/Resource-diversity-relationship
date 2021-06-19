@@ -1,0 +1,499 @@
+---
+title: "Figure 2"
+output: html_notebook
+---
+
+## Distinguish between generalist and specialist ASVs
+
+### Subset flat data at day 7 to obtain only single resource data and transform into presence-absence data for ASVs present in at least one resource.  
+Probably not the best way to transform to presence-absence. This are utility codes to get datasets ready for the analysis on generalists and specialists. The main problem to solve is to exclude ASVs that are present in the dataset but absent from single resource communities. Finally count how many media each ASV is present in.
+
+```{r}
+df_ALL_RA_1C <- filter(df_ALL_RA, C_number == 1)
+
+abundance_threshold = 0  #change to 0.001 to leave out low abund ASVs
+
+ASV_SumAbund_1C <- df_ALL_RA_1C %>%
+   group_by(OTU) %>%
+   summarise(ASV_SumAbund = sum(Abundance,na.rm=TRUE))
+
+ASV_SumAbund_1C_no0 <- filter(ASV_SumAbund_1C, ASV_SumAbund > abundance_threshold)
+ASVtoKeep <- ASV_SumAbund_1C_no0$OTU
+
+GenSpec_utility_df <- filter(df_ALL_RA_1C, OTU %in% ASVtoKeep)
+GenSpec_utility_df$presence <- GenSpec_utility_df$Abundance
+GenSpec_utility_df <- GenSpec_utility_df %>% mutate(presence = replace(presence, presence > 0, 1))
+
+GenSpec_utility_df_2 <- GenSpec_utility_df %>%
+   group_by(medium,OTU) %>%
+   summarise(ASV_SumPresence = sum(presence,na.rm=TRUE))
+GenSpec_utility_df_2 <- GenSpec_utility_df_2 %>% mutate(ASV_SumPresence = replace(ASV_SumPresence, ASV_SumPresence > 0, 1))
+
+GenSpec_utility_df_3 <- GenSpec_utility_df_2 %>%
+   group_by(OTU) %>%
+   summarise(n_media = sum(ASV_SumPresence,na.rm=TRUE))   # count how many media (resource) each ASV is present in
+
+p_fig2_A <- ggplot(GenSpec_utility_df_3 , aes(x=n_media))+
+  geom_histogram(binwidth=1, fill="#CCCCCC", color="black")+
+  scale_y_log10(
+   breaks = scales::trans_breaks("log10", function(x) 10^x),
+   labels = scales::trans_format("log10", scales::math_format(10^.x))
+   )
+p_fig2_A
+```
+
+### Define generalist and specialist ASVs + Intermediates
+This is simply based on how many media each is ASV is found
+
+```{r}
+Spec_df <- filter (GenSpec_utility_df_3, n_media <= 3 )
+Spec_ASV <- unique(Spec_df$OTU)  # list of specialist ASVs
+
+Gen_df <- filter (GenSpec_utility_df_3, n_media >= 13 )
+Gen_ASV <- unique(Gen_df$OTU)  # list of generalist ASVs
+
+Interm_df <- filter (GenSpec_utility_df_3, n_media > 3 & n_media < 13)
+Interm_ASV <- unique(Interm_df $OTU)  # list of intermediate ASVs
+
+```
+
+### Find average number of generalists, specialists and intermediates in single and multiresource communities
+Steps:
+
+- Find number of **specialist**, **generalist** and **intermediate** ASVs in each replicate (distribution of resource strategies). 
+- Compute average number of ASV for each strategy per medium (= mean over 3 reps). 
+- Plot in singles and as a function of the number of C sources
+
+1.
+```{r}
+### From 1 to 15 C sources
+media <- c(1:74)
+rep <- c("a","b","c")
+n_media <- length(media)
+n_rep <- length(rep)
+dat <- df_ALL
+
+# Specialists
+out_spec_ASV=as.data.frame(matrix(NA,nrow=n_media,ncol=n_rep))
+  colnames(out_spec_ASV)<-c("r1","r2","r3")
+
+for (i in 1:n_media){
+  idx_1 <- media[i]
+  g = dat[dat$medium==idx_1,]
+    for (j in 1:n_rep){
+  idx_2 <- rep[j]    
+  m = g[g$rep==idx_2,]
+  
+       if (nrow(m)==0) {
+        out_spec_ASV[i,j]= NaN
+      } 
+      else {
+  
+  ASV_no0 <- m[m$Abundance>0,]
+  ASV_no0$OTU <- factor(ASV_no0$OTU)
+  OTUs <- unique(ASV_no0$OTU)
+  specialist_OTU <- length(Reduce(intersect, list(Spec_ASV,OTUs)))   #find elements in common
+
+  out_spec_ASV[i,j] <- specialist_OTU
+      }
+  }
+}
+
+# Generalists
+out_gen_ASV=as.data.frame(matrix(NA,nrow=n_media,ncol=n_rep))
+  colnames(out_gen_ASV)<-c("r1","r2","r3")
+
+for (i in 1:n_media){
+  idx_1 <- media[i]
+  g = dat[dat$medium==idx_1,]
+    for (j in 1:n_rep){
+  idx_2 <- rep[j]    
+  m = g[g$rep==idx_2,]
+  
+       if (nrow(m)==0) {
+        out_gen_ASV[i,j]= NaN
+      } 
+      else {
+  
+  ASV_no0 <- m[m$Abundance>0,]
+  ASV_no0$OTU <- factor(ASV_no0$OTU)
+  OTUs <- unique(ASV_no0$OTU)
+  generalist_OTU <- length(Reduce(intersect, list(Gen_ASV,OTUs)))   #find elements in common
+
+  out_gen_ASV[i,j] <- generalist_OTU
+      }
+  }
+}
+  
+# Intermediates
+out_interm_ASV=as.data.frame(matrix(NA,nrow=n_media,ncol=n_rep))
+  colnames(out_interm_ASV)<-c("r1","r2","r3")
+
+for (i in 1:n_media){
+  idx_1 <- media[i]
+  g = dat[dat$medium==idx_1,]
+    for (j in 1:n_rep){
+  idx_2 <- rep[j]    
+  m = g[g$rep==idx_2,]
+  
+       if (nrow(m)==0) {
+        out_interm_ASV[i,j]= NaN
+      } 
+      else {
+  
+  ASV_no0 <- m[m$Abundance>0,]
+  ASV_no0$OTU <- factor(ASV_no0$OTU)
+  OTUs <- unique(ASV_no0$OTU)
+  intermediate_OTU <- length(Reduce(intersect, list(Interm_ASV,OTUs)))   #find elements in common
+
+  out_interm_ASV[i,j] <- intermediate_OTU
+      }
+  }
+}
+  
+### 16 C sources
+media <- c(80:82)
+rep <- c("a","b","c")
+rep1 <- c("d","e","f")
+rep2 <- c("g","h","i")
+n_media <- length(media)
+n_rep <- length(rep)
+dat <- df_ALL_16C
+
+# Specialists
+out_spec_ASV_16=as.data.frame(matrix(NA,nrow=n_media,ncol=n_rep))
+  colnames(out_spec_ASV_16)<-c("r1","r2","r3")
+
+  for (i in 1:n_media){
+    g = dat[dat$medium==media[i],]
+    for (j in 1:n_rep){
+      m = g[g$rep %in% c(rep[j], rep1[j], rep2[j]),]
+      ASV_no0 <- m[m$Abundance>0,]
+      ASV_no0$OTU <- factor(ASV_no0$OTU)
+      OTUs <- unique(ASV_no0$OTU)
+      specialist_OTU <- length(Reduce(intersect, list(Spec_ASV,OTUs)))   #find elements in common
+      
+      out_spec_ASV_16[i,j] <- specialist_OTU
+    }
+  }  
+
+# Generalists
+out_gen_ASV_16=as.data.frame(matrix(NA,nrow=n_media,ncol=n_rep))
+  colnames(out_gen_ASV_16)<-c("r1","r2","r3")
+
+  for (i in 1:n_media){
+    g = dat[dat$medium==media[i],]
+    for (j in 1:n_rep){
+      m = g[g$rep %in% c(rep[j], rep1[j], rep2[j]),]
+      ASV_no0 <- m[m$Abundance>0,]
+      ASV_no0$OTU <- factor(ASV_no0$OTU)
+      OTUs <- unique(ASV_no0$OTU)
+      generalist_OTU <- length(Reduce(intersect, list(Gen_ASV,OTUs)))   #find elements in common
+      
+      out_gen_ASV_16[i,j] <- generalist_OTU
+    }
+  }  
+
+# Intermediates
+out_interm_ASV_16=as.data.frame(matrix(NA,nrow=n_media,ncol=n_rep))
+  colnames(out_interm_ASV_16)<-c("r1","r2","r3")
+
+  for (i in 1:n_media){
+    g = dat[dat$medium==media[i],]
+    for (j in 1:n_rep){
+      m = g[g$rep %in% c(rep[j], rep1[j], rep2[j]),]
+      ASV_no0 <- m[m$Abundance>0,]
+      ASV_no0$OTU <- factor(ASV_no0$OTU)
+      OTUs <- unique(ASV_no0$OTU)
+      intermediate_OTU <- length(Reduce(intersect, list(Interm_ASV,OTUs)))   #find elements in common
+      
+      out_interm_ASV_16[i,j] <- intermediate_OTU
+    }
+  }
+
+```
+
+2.
+```{r}
+### Assemble datasets
+
+#Spec  
+Spec_ASV_Xrep_df <- as_tibble(rbind(out_spec_ASV,out_spec_ASV_16))
+Spec_ASV_Xrep_df$medium <- c(1:77)
+Spec_ASV_Xrep_df$strategy <- rep(c("Spec"),77)
+
+Spec_ASV_Xrep_df <- Spec_ASV_Xrep_df %>% 
+  pivot_longer(c(`r1`, `r2`, `r3`), names_to = "rep", values_to = "n")
+
+Spec_ASV_Xmedium_df <- Spec_ASV_Xrep_df %>%
+  group_by(strategy, medium) %>%
+  summarise(mean_n = mean(n, na.rm=TRUE),
+            SE_n = std.error(n, na.rm=TRUE))
+Spec_ASV_Xmedium_df
+
+# Gen
+Gen_ASV_Xrep_df <- as_tibble(rbind(out_gen_ASV,out_gen_ASV_16))
+Gen_ASV_Xrep_df$medium <- c(1:77)
+Gen_ASV_Xrep_df$strategy <- rep(c("Gen"),77)
+
+Gen_ASV_Xrep_df <- Gen_ASV_Xrep_df %>% 
+  pivot_longer(c(`r1`, `r2`, `r3`), names_to = "rep", values_to = "n")
+
+Gen_ASV_Xmedium_df <- Gen_ASV_Xrep_df %>%
+  group_by(strategy, medium) %>%
+  summarise(mean_n = mean(n, na.rm=TRUE),
+            SE_n = std.error(n, na.rm=TRUE))
+Gen_ASV_Xmedium_df
+
+#Interm
+Interm_ASV_Xrep_df <- as_tibble(rbind(out_interm_ASV,out_interm_ASV_16))
+Interm_ASV_Xrep_df$medium <- c(1:77)
+Interm_ASV_Xrep_df$strategy <- rep(c("Interm"),77)
+
+Interm_ASV_Xrep_df <- Interm_ASV_Xrep_df %>% 
+  pivot_longer(c(`r1`, `r2`, `r3`), names_to = "rep", values_to = "n")
+
+Interm_ASV_Xmedium_df <- Interm_ASV_Xrep_df %>%
+  group_by(strategy, medium) %>%
+  summarise(mean_n = mean(n, na.rm=TRUE),
+            SE_n = std.error(n, na.rm=TRUE))
+Interm_ASV_Xmedium_df
+
+```
+
+3.
+```{r}
+### Order the richness data aggregated by medium_id (the numeric version of the factor medium) 
+# I need this to retrieve the column "C_number" in the same order of the datasets with the strategies
+meanRich_tib_ordered <- as_tibble(meanRich_tib[order(meanRich_tib$medium_id),])  
+
+# patch all datasets together
+strategies_Xmedium_df <- bind_rows(Gen_ASV_Xmedium_df, Interm_ASV_Xmedium_df, Spec_ASV_Xmedium_df)
+strategies_Xmedium_df$C_number <- rep(c(meanRich_tib_ordered$C_number, 16, 16),3)
+
+# single out single resources
+strategies_Xmedium_1C_df <- filter(strategies_Xmedium_df, C_number == 1)
+strategies_Xmedium_1C_df$dummy = rep(c("C_Generalist_ASVs", "B_Intermediate_ASVs", "A_Specialist_ASVs"), each= 16)
+strategies_Xmedium_1C_df$tot_richness <- rep(c(meanRich_1C$mean_rich),3)
+strategies_Xmedium_1C_df <- strategies_Xmedium_1C_df %>%
+  arrange(strategy, tot_richness)
+strategies_Xmedium_1C_df$asc_ordering <- rep(c(letters[1:16]), 3)
+
+# compute error bar position
+# strategies_Xmedium_1C_utility_df <- strategies_Xmedium_1C_df %>%
+#   group_by(asc_ordering, medium) %>%
+#   summarise(SE_n_pos = cumsum(mean_n))
+# 
+# strategies_Xmedium_1C_df <- strategies_Xmedium_1C_df %>%
+#   arrange(dummy)
+# strategies_Xmedium_1C_df$SE_n_pos <- strategies_Xmedium_1C_utility_df$SE_n_pos
+# strategies_Xmedium_1C_df
+
+p_fig2_B <- ggplot(data=strategies_Xmedium_1C_df, aes(asc_ordering, y=mean_n, fill=dummy))+
+  geom_col(width=0.8, alpha=0.9)+
+  #geom_errorbar(aes(ymin=SE_pos-SE, ymax=SE_pos+SE, group=strategy), width=0.2,  position = "identity")+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(4, "Spectral"))(3))+
+  theme(legend.position="none")+
+  labs(x = "Resource", y="Richness")
+p_fig2_B
+
+```
+
+4.
+```{r}
+# aggregate per C number and strategy
+strategies_XCnumber_df <- strategies_Xmedium_df %>%
+                    group_by(strategy,C_number) %>% 
+                        summarise(mean_strategies = mean(mean_n),
+                                  SE_strategies = std.error(mean_n))
+
+# sum over strategies and subtract from total richness to obtain the number of unseen ASVs in single resources
+strategies_utility_df <- strategies_XCnumber_df %>% 
+                         group_by(C_number) %>% 
+                            summarise(tot_strategies_seen_in_single = sum(mean_strategies))
+
+strategies_utility_df <- strategies_utility_df %>% 
+  mutate(tot_richness = meanRich_Csource$mean_rich)
+
+strategies_utility_df <- strategies_utility_df %>% 
+  mutate(mean_strategies = tot_richness - tot_strategies_seen_in_single)
+strategies_utility_df <- strategies_utility_df %>% 
+  mutate(mean_strategies = if_else(mean_strategies < 0, 0, mean_strategies))
+strategies_utility_df <- strategies_utility_df %>% 
+  mutate(strategy = rep(c("Unseen_in_single"),6))
+strategies_utility_df <- strategies_utility_df %>% 
+  relocate(strategy, .before = C_number)
+
+strategies_utility_df_1 <- strategies_XCnumber_df %>%
+  select(strategy, C_number, mean_strategies)
+
+strategies_utility_df_2 <- strategies_utility_df %>%
+  select(strategy, C_number, mean_strategies)
+
+strategies_plot_df <- bind_rows(strategies_utility_df_1, strategies_utility_df_2 )
+strategies_plot_df
+
+# add a column with strategy names in the order I want for the stacked bars plot
+strategies_plot_df$dummy = rep(c("D_Generalist_ASVs", "C_Intermediate_ASVs", "B_Specialist_ASVs", "ASVs_Unseen_in_single"), each= 6)
+
+p_fig2_G <- ggplot(data=strategies_plot_df, aes(C_number, y=mean_strategies, fill=dummy))+
+  geom_col(width=0.8, alpha=0.9)+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(4, "Spectral"))(4))+
+  theme(legend.position="none")+
+  labs(x = "C_number", y="Richness")
+p_fig2_G
+
+```
+
+## Look at the distribution of metabolites 
+Compute the frequency of each metabolite across single resources
+
+```{r}
+metMap_1C_data <- read.table("./Other_data/Metabolites_1C.txt", header=T)
+
+metMap_1C <- metMap_1C_data %>%
+  pivot_longer(!medium, names_to = "metabolite", values_to = "presence")
+
+met_count <-metMap_1C %>% 
+    group_by(metabolite) %>%
+    summarise(n_media = sum(presence))
+
+p_fig2_C <- ggplot(met_count , aes(x=n_media))+
+  geom_histogram(binwidth=1, fill="#CCCCCC", color="black")
+
+p_fig2_C
+
+```
+
+### Define *core*, *intermediate* and *peripheral* metabolites
+The thresholding is the same one we used for ASVs.
+
+```{r}
+core_met_tb <- met_count %>% filter(n_media >= 13)
+core_met <- unique(core_met_tb$metabolite)
+
+peripheral_met_tb <- met_count %>% filter(n_media <= 3)
+peripheral_met <- unique(peripheral_met_tb$metabolite)
+
+intermediate_met_tb <- met_count %>% filter(n_media > 3 & n_media < 13)
+intermediate_met <- unique(intermediate_met_tb$metabolite)
+
+```
+
+### Find number of *core*, *intermediate* and *peripheral* metabolites generated from single-resource media
+Steps:
+
+- Find number of *core* (= common), *intermediate* and *peripheral* (= rare) metabolites in each medium 
+- Plot in singles 
+
+```{r}
+media <- c(43:58)
+n_media <- length(media)
+dat <- metMap_1C
+
+out_pheripheral_met <- integer(n_media)
+
+for (i in 1:n_media){
+  idx <- media[i]
+  m = dat[dat$medium==idx,]
+  
+  met_no0 <- m[m$presence>0,]
+  met_no0$metabolite <- factor(met_no0$metabolite)
+  met <- unique(met_no0$metabolite)
+  periph_met <- length(Reduce(intersect, list(peripheral_met,met)))   #find elements in common
+
+  out_pheripheral_met[i] <- periph_met
+}
+
+out_core_met <- integer(n_media)
+
+for (i in 1:n_media){
+  idx <- media[i]
+  m = dat[dat$medium==idx,]
+  
+  met_no0 <- m[m$presence>0,]
+  met_no0$metabolite <- factor(met_no0$metabolite)
+  met <- unique(met_no0$metabolite)
+  cor_met <- length(Reduce(intersect, list(core_met,met)))   #find elements in common
+
+  out_core_met[i] <- cor_met
+}
+
+out_intermediate_met <- integer(n_media)
+
+for (i in 1:n_media){
+  idx <- media[i]
+  m = dat[dat$medium==idx,]
+  
+  met_no0 <- m[m$presence>0,]
+  met_no0$metabolite <- factor(met_no0$metabolite)
+  met <- unique(met_no0$metabolite)
+  intermed_met <- length(Reduce(intersect, list(intermediate_met,met)))   #find elements in common
+
+  out_intermediate_met[i] <- intermed_met
+}
+
+# Arrange in dataset
+met_distribution_1C <- tibble(medium = rep(c(43:58),3), type = rep(c("a_Peripheral","b_Intermediate","c_Core"),each=16), number = c(out_pheripheral_met,out_intermediate_met,out_core_met), mean_rich = rep(c(meanRich_1C$mean_rich),3))
+# letters in from of the name of the groups of metabolites are just for getting the right order in the plot
+
+met_distribution_1C <- met_distribution_1C %>%
+  arrange(type, mean_rich)
+met_distribution_1C$asc_ordering <- rep(c(letters[1:16]), 3)
+
+#Plot
+p_fig2_D <- ggplot(data=met_distribution_1C, aes(asc_ordering, y=number, fill=type))+
+  geom_col(width=0.8, alpha=0.9)+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(4, "Spectral"))(3))+
+  theme(legend.position="none")+
+  labs(x = "Resource", y="Number of metabolites")
+p_fig2_D
+
+```
+
+### Plot preference score (need Hyun's code)
+To verify the expectation that generalists and specialists also exhibit contrasting resource preferences in multi-resource environments, we calculated a resource-specificity score. For each ASV present in a single resource (target resource), the resource specificity score was calculated as the difference between the number of multi-resource media containing the target resource in which the ASV was found and the number of media not containing the target resource in which the ASV was found, divided by the total number of media in which the ASV was found. The score ranged from 1, indicating that the ASV was present only when the target resource was provided in a combination, to -1, implying that, although the ASV was found in the single resource, it was always absent when that resource was supplied with others. A score of 0 indicated that an ASV showed no specificity for that resource 
+
+```{r}
+pref_score_ASV_df <- read.table("./Other_data/Preference_score_ASVs.txt", header=T)
+
+pref_score_Xresource_df <- pref_score_ASV_df %>%
+  group_by(resource, strategy) %>%
+  summarise(mean_score = mean(preference),
+            SE_score = std.error(preference))
+
+pref_score_Xresource_df <-pref_score_Xresource_df %>%
+  mutate(medium = case_when(resource=="glucose"~"43",
+                            resource=="fructose"~"44",
+                            resource=="xylose"~"45",
+                            resource=="mannose"~"46",
+                            resource=="cellobiose"~"47",
+                            resource=="maltose"~"48",
+                            resource=="sucrose"~"49",
+                            resource=="citric_acid"~"50",
+                            resource=="fumaric_acid"~"51",
+                            resource=="galacturonic_acid"~"52",
+                            resource=="mannitol"~"53",
+                            resource=="sorbitol"~"54",
+                            resource=="glycerol"~"55",
+                            resource=="proline"~"56",
+                            resource=="cellulose"~"57",
+                            resource=="starch"~"58"
+                            ))
+
+pref_score_Xstrategy_df <- pref_score_Xresource_df %>%
+  group_by(strategy) %>%
+  summarise(avg_score = mean(mean_score),
+            SE_score = std.error(mean_score))
+
+p_fig2_F <- ggplot(data=pref_score_Xstrategy_df, aes(strategy, y=avg_score))+
+  geom_jitter(data=pref_score_Xresource_df, size=2, shape=21, width= .1, aes(strategy, y=mean_score, fill=medium))+
+  geom_col(alpha=0.5)+
+  geom_errorbar(aes(ymin=avg_score - SE_score, ymax=avg_score + SE_score), width=0)+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(16)) +
+  theme(legend.position="right")+
+  labs(x = "", y="Mean resource-specificity score")
+p_fig2_F
+
+```
+

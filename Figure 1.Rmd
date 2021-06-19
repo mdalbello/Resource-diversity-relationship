@@ -1,0 +1,340 @@
+---
+title: "Figure 1"
+output: html_notebook
+---
+
+
+```{r Load packages}
+library(ggplot2); packageVersion("ggplot2")
+library(plotrix)
+library(nlme)
+library(RColorBrewer)
+library(GAD)
+library(tidyverse)
+library(plotly)
+library(reshape2)
+
+```
+
+### Load data if you have not run "Get_working_datasets"
+
+```{r}
+diversity_data <- read.csv("Diversity_data.csv", header=T)
+diversity_tib <- as_tibble(diversity_data)
+
+```
+
+
+### Aggregate data by medium
+Each combination of carbon sources (growth medium) is replicated 3 times. 
+
+```{r}
+meanRich_tib <- diversity_tib %>%
+   group_by(medium, FC_number, C_number) %>%
+   summarise(mean_rich = mean(D0),
+             SE_rich = std.error(D0))
+
+# create numeric variable for medium 
+meanRich_tib$medium_id <- as.numeric(levels(meanRich_tib$medium))[meanRich_tib$medium]
+
+```
+
+### Diversity in single resources 
+List of single resources:
+
+- Glucose
+- Fructose
+- Xylose
+- Mannose
+- Cellobiose
+- Maltose
+- Sucrose
+- Citrate
+- Fumarate
+- Galacturonate
+- Mannitol
+- Sorbitol
+- Glycerol
+- Hydroxyproline
+- Cellulose
+- Starch.
+
+Single resources include simple sugars, disaccharides, organic acids, sugar alcoohols, a compound similar to an amino acid (coomonly released by roots) and polysaccharides typical of soils. Citrate, fumarate and hydroxyproline are considered *gluconeogenic* resources (entering the central metabolic pathway via TCA), while all the others are *glycolytic* (entering from the glycolysis).
+
+**One-way ANOVA test on data for single resources.** 
+H0: average richness is similar across different growth media. H1: average richness of at least one media is different from the others. Tests provided both with and without the GAD package.
+
+```{r}
+diversity_1C <- filter(diversity_tib, C_number == 1)  # subset dataset
+  
+# anova_one_way <- aov(D0~medium, data = diversity_1C)
+# summary(anova_one_way)
+# 
+# TukeyHSD(anova_one_way)
+
+MEDIUM <- as.fixed(diversity_1C$medium)
+ANOVA_model <- lm(D0 ~ MEDIUM, data = diversity_1C)
+gad(ANOVA_model)
+
+C.test(ANOVA_model)
+snk.test(ANOVA_model, term = 'MEDIUM')
+
+```
+
+## Richness in single resources correlates with the number of metabolites predicted to be generated from them via rections inside the bacterial cells (generic ensemble of microbes). 
+### Fig. 1 Panel B.
+
+Metabolites are estimated from KEGG and MetaCyc databases (Akshit Goyal). We have one estimate for each growth medium (i.e. combination of carbon sources).
+
+Plot relation between metabolite number and richness in single resources. Calculate Pearson Coefficient. 
+
+```{r}
+KEGG_data <- read.table("./Other_data/Kegg_data.txt", header=T)
+
+KEGG_data_1C <- filter(KEGG_data, num_cs == 1)
+
+meanRich_1C <- filter(meanRich_tib, C_number == 1)
+#meanRich_1C$n_met <- KEGG_data_1C$met_number
+#meanRich_1C$n_met_fba <- c(26,36,50,22,40,48,34,14,15,24,45,53,47,14,29,41)
+n_met <- c(41,38,43,41,46,38,39,27,27,39,39,42,34,33,50,44)  # Curated number: need to fix this!
+
+p_fig1_B <- ggplot(data=meanRich_1C, aes(n_met, y=mean_rich, fill=medium))+
+  geom_errorbar(aes(ymin=mean_rich-SE_rich, ymax=mean_rich+SE_rich))+
+  geom_point(size=5, shape=21)+
+  theme_light()+
+  geom_abline(aes(intercept=0, slope=0.62585), linetype="dashed", color="#990000")+
+  #geom_smooth(method = "lm", linetype="dashed", color="#990000")+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(16))+
+  theme(legend.position="none")+
+  labs(y = "Observed richness", x="Estimated number of metabolites")+
+  ylim(0,50)
+p_fig1_B
+
+pearson <- cor.test(n_met, meanRich_1C$mean_rich,
+                    method="pearson")
+pearson
+
+```
+
+```{r}
+met_LM <- lm(mean_rich ~ 0 + n_met_fba, data=meanRich_1C)
+summary(met_LM)
+```
+
+## How observed richness in constituent single resources compares to the observed richness in two-resource communities and predictions calculated as the union (sum without overlapping ASVs) or the maximum  of the richness in constituent singles. 
+### Fig. 1 Panel C.
+Having found large numbers of coexisting species in single resources, we expected that community diversity would increase rapidly if more resources were provided (union and max predictions).
+
+Show that union and max predictions overestimate richness in 2-resource media: an example (glucose + hydroxyproline)
+
+```{r}
+dat_tmp_2C <- filter(meanRich_tib, C_number < 3 , medium == 1 | medium == 43 | medium == 56)
+dat_tmp_2C <- dat_tmp_2C %>% select(!(medium_id))
+dat_tmp_2C <-rows_insert(dat_tmp_2C, tibble(medium = "max", FC_number = "2", C_number = 2, mean_rich = 24.00000, SE_rich = 1.040833))
+dat_tmp_2C <-rows_insert(dat_tmp_2C, tibble(medium = "union", FC_number = "2", C_number = 2, mean_rich = 29.88889, SE_rich = 0.9638529))
+
+
+p_fig1_C <- ggplot(data=dat_tmp_2C, aes(x=FC_number, y=mean_rich, fill=medium))+
+  geom_point(size=4, shape=21)+
+  geom_errorbar(aes(x=C_number, y=mean_rich, ymin=mean_rich-SE_rich, ymax=mean_rich+SE_rich), width=.1)+
+  #geom_point(size=4, shape=22)+
+  theme_bw()+
+  theme(legend.position="none")+
+  ylim(0,50)
+p_fig1_C
+```
+
+## Observed average richness as a linear function of the number of supplied carbon sources
+### Fig. 1 panel D
+Predicted values based on union and maximum are obtained through a python script (name).
+
+```{r}
+predictions_df <- data.frame(union <- c(22.52083, 38.71, 63.48, 100.68, 149.36, 155.32), max = c(22.52083,28.61,33.99 ,38.85, 43.12, 43.53), C_number= c(1,2,4,8,15,16), FC_number = c("1","2","4","8","15","16"))
+
+meanRich_Csource <- diversity_tib %>% 
+  group_by(C_number) %>%
+  summarise(mean_rich = mean(D0),
+            SE_rich = std.error(D0))
+
+
+p_fig1_D <- ggplot(data=predictions_df, aes(x=C_number, y=max))+
+    geom_smooth(data=predictions_df, aes(x=C_number, y=union), method = lm, formula = y ~ splines::bs(x, 5), se = FALSE, color="black")+
+  geom_smooth(method = lm, formula = y ~ splines::bs(x, 5), se = FALSE, color="black")+
+  geom_abline(slope=1, intercept =0, color="black")+
+  geom_abline(slope=1.42583, intercept =20.65722, color="black")+
+  geom_jitter(data=meanRich_tib, aes(x=C_number, y=mean_rich), size=1, shape=21, fill="gray", width=0.1)+
+  geom_point(data=meanRich_Csource , aes(x=C_number, y=mean_rich), size=4, shape=21)+
+  geom_errorbar(data=meanRich_Csource , aes(x=C_number, y=mean_rich, ymin=mean_rich-SE_rich, ymax=mean_rich+SE_rich))+
+  #geom_point(size=4, shape=22)+
+  theme_bw()+
+  theme(legend.position="none")+
+  ylim(0,160)
+p_fig1_D
+
+```
+
+### Extended data 
+Get slopes and intercepts
+
+```{r}
+lm_rich <- lm(D0 ~ C_number, data=diversity_tib)
+summary(lm_rich)
+
+
+lm_rich_0.1 <- lm(D0_0.1 ~ C_number, data=diversity_tib)
+summary(lm_rich_0.1)
+
+lm_rich_fam <- lm(D0_family ~ C_number, data=diversity_tib)
+summary(lm_rich_fam)
+
+
+lm_rich_D1 <- lm(D1 ~ C_number, data=diversity_tib)
+summary(lm_rich_D1)
+
+lm_rich_D2 <- lm(D2 ~ C_number, data=diversity_tib)
+summary(lm_rich_D2)
+```
+
+Plot
+
+```{r}
+plot_richnesses_df <- diversity_tib %>% 
+  group_by(C_number) %>%
+  summarise(mean_D1 = mean(D1),
+            SE_D1 = std.error(D1),
+            mean_D2 = mean(D2),
+            SE_D2 = std.error(D2),
+            mean_D0_0.1 = mean(D0_0.1),
+            SE_D0_0.1 = std.error(D0_0.1),
+            mean_D0_fam = mean(D0_family),
+            SE_D0_fam = std.error(D0_family))
+
+```
+
+
+```{r}
+library(gridExtra)
+
+p_figS10A <- ggplot(data=diversity_tib, aes(x=C_number, y=D0_0.1))+
+  geom_abline(slope=0.99952, intercept =11.59307, color="black")+
+  geom_jitter(size=1, shape=21, fill="gray", width=0.1)+
+  geom_point(data=plot_richnesses_df , aes(x=C_number, y=mean_D0_0.1), size=4, shape=21)+
+  geom_errorbar(data=plot_richnesses_df , aes(x=C_number, y=mean_D0_0.1, ymin=mean_D0_0.1-SE_D0_0.1, ymax=mean_D0_0.1+SE_D0_0.1))+
+  #geom_point(size=4, shape=22)+
+  theme_bw()+
+  theme(legend.position="none")#+
+  #ylim(0,32)
+p_figS10A
+
+p_figS10B <- ggplot(data=diversity_tib, aes(x=C_number, y=D0_family))+
+  geom_abline(slope=0.42183, intercept =10.43812, color="black")+
+  geom_jitter(size=1, shape=21, fill="gray", width=0.1)+
+  geom_point(data=plot_richnesses_df , aes(x=C_number, y=mean_D0_fam), size=4, shape=21)+
+  geom_errorbar(data=plot_richnesses_df , aes(x=C_number, y=mean_D0_fam, ymin=mean_D0_fam-SE_D0_fam, ymax=mean_D0_fam+SE_D0_fam))+
+  #geom_point(size=4, shape=22)+
+  theme_bw()+
+  theme(legend.position="none")#+
+  #ylim(0,22)
+p_figS10B
+
+grid.arrange(p_figS10A, p_figS10B, nrow = 1)
+
+p_figS10C <- ggplot(data=diversity_tib, aes(x=C_number, y=D1))+
+  geom_abline(slope=0.31107, intercept =3.17260, color="black")+
+  geom_jitter(size=1, shape=21, fill="gray", width=0.1)+
+  geom_point(data=plot_richnesses_df , aes(x=C_number, y=mean_D1), size=4, shape=21)+
+  geom_errorbar(data=plot_richnesses_df , aes(x=C_number, y=mean_D1, ymin=mean_D1-SE_D1, ymax=mean_D1+SE_D1))+
+  #geom_point(size=4, shape=22)+
+  theme_bw()+
+  theme(legend.position="none")
+
+p_figS10D <- ggplot(data=diversity_tib, aes(x=C_number, y=D2))+
+  geom_abline(slope=0.14559, intercept =2.33945, color="black")+
+  geom_jitter(size=1, shape=21, fill="gray", width=0.1)+
+  geom_point(data=plot_richnesses_df , aes(x=C_number, y=mean_D2), size=4, shape=21)+
+  geom_errorbar(data=plot_richnesses_df , aes(x=C_number, y=mean_D2, ymin=mean_D2-SE_D2, ymax=mean_D2+SE_D2))+
+  #geom_point(size=4, shape=22)+
+  theme_bw()+
+  theme(legend.position="none")
+
+grid.arrange(p_figS10C, p_figS10D, nrow = 1)
+```
+
+
+# Multivariate regression
+
+### Supplementary Fig. 18
+
+```{r}
+myDat <- diversity_tib
+
+count_fun <- function(x){
+  sum(x>0) 
+}
+
+myDat <- myDat %>%
+   mutate(gluc_number = select(., citric_acid_c, fumaric_acid_c, proline_c) %>% apply(1, count_fun),
+          glyc_number = select(.,glucose_c, fructose_c, xylose_c, mannose_c, cellobiose_c, maltose_c, sucrose_c, galacturonic_acid_c, mannitol_c, sorbitol_c, glycerol_c, cellulose_c, starch_c) %>% apply(1, count_fun))
+
+diversity_glyc_gluc <- myDat %>%
+   group_by(gluc_number,glyc_number,medium, FC_number, C_number) %>%
+   summarise(mean_rich = mean(D0),
+             SE_rich = std.error(D0))
+
+LM.1 <- lm(mean_rich~gluc_number + glyc_number, data=diversity_glyc_gluc)
+summary(LM.1)
+
+LM.2 <- lm(mean_rich~C_number, data=diversity_glyc_gluc)
+#summary(LM.2)
+
+AIC(LM.1, LM.2)
+
+```
+
+### 3D plot
+
+```{r}
+my_df <- diversity_glyc_gluc
+graph_reso <- 0.05
+
+#Setup Axis
+axis_x <- seq(min(my_df$glyc_number), max(my_df$glyc_number), by = graph_reso)
+axis_y <- seq(min(my_df$gluc_number), max(my_df$gluc_number), by = graph_reso)
+
+#Sample points
+LM.1_surface <- expand.grid(glyc_number = axis_x,gluc_number = axis_y,KEEP.OUT.ATTRS = F)
+LM.1_surface$pred_rich <- predict.lm(LM.1, newdata = LM.1_surface)
+LM.1_surface <- acast(LM.1_surface, gluc_number ~ glyc_number, value.var = "pred_rich") #y ~ x
+
+threeD_plot <- plot_ly(my_df, 
+                     x = ~glyc_number, 
+                     y = ~gluc_number, 
+                     z = ~mean_rich,
+                     text = ~C_number, 
+                     type = "scatter3d", 
+                     mode = "markers",
+                     color= ~FC_number,
+                     colors = c("#C2294A", "#FA9856", "#FEE08B", "#E6F598", "#94D4A4", "#4075B4"),
+                     showscale = FALSE) 
+
+threeD_plot <- threeD_plot %>% layout(
+    title = "",
+    scene = list(
+      xaxis = list(title = "Number of glycolytic resources"),
+      yaxis = list(title = "Number of gluconeogenic resources"),
+      zaxis = list(title = "Richness")
+    ))
+
+
+threeD_PD_plot <- add_trace(p = threeD_plot,
+                       z = LM.1_surface,
+                       x = axis_x,
+                       y = axis_y,
+                       type = "surface", 
+                       colorscale = "YlGnBu",
+                       reversescale =T)
+
+threeD_PD_plot
+```
+
+

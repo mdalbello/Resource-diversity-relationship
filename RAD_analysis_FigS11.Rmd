@@ -1,0 +1,185 @@
+---
+title: "RAD (Rank abundance distributions) analysis - Fig. S11"
+output: html_notebook
+---
+
+# Computing RAD and compare them 
+
+```{r}
+library(RADanalysis)
+library(purrr)
+library(tidyr)
+library(ggplot2); packageVersion("ggplot2")
+library(plotrix)
+library(RColorBrewer)
+library(tidyverse)
+library(phyloseq); packageVersion("phyloseq")
+library(microbiome)
+
+```
+
+### Get RADs
+
+This requires calculating the rank for each replicate based on the abundance of the observed ASVs. It also implies getting rid of unobserved ASVs in each replicate.
+
+```{r}
+abundance_df <- t(abundances(ps_to_use_RA))
+rad_df <- data.frame(cbind(sample_data(ps_to_use_RA),abundance_df))
+
+rad_agg <-rad_df %>% 
+    group_by(medium,rep,C_number) %>%
+    summarise(across(starts_with('ASV'), mean))
+
+rad_agg_no0 <- rad_agg[, colSums(rad_agg != 0) > 0]  #619 ASVs
+rad_agg_no0$FC_number <- factor(rad_agg_no0$C_number)
+
+#rac_sorted <-apply(rac_df_agg_no0[,4:622],1,sort,decreasing=T)
+abundance_sorted <-c(apply(rad_agg_no0[,4:622],1,sort,decreasing=T))
+
+abundances_media <- data.frame(abundance = abundance_sorted, rank = rep(c(1:619), 227), medium = rep(rad_agg_no0$medium,each=619), rep = rep(rad_agg_no0$rep,each=619), C_number = rep(rad_agg_no0$C_number,each=619))
+abundances_media$rep.bis <- paste(abundances_media$medium,abundances_media$rep)
+abundances_media_no0 = abundances_media[abundances_media$abundance!=0,]
+
+
+p_fig_S11a <- ggplot(data=abundances_media_no0, aes(rank, y=abundance, group=rep.bis, color=C_number))+
+  geom_line( alpha=.7)+
+  theme(legend.position="none")+
+  geom_smooth(method='lm', se = FALSE, size=0.1, color="black", linetype="dashed")+
+   scale_y_log10(
+   breaks = scales::trans_breaks("log10", function(x) 10^x),
+   labels = scales::trans_format("log10", scales::math_format(10^.x))
+   ) +
+  #  scale_x_log10(
+  #  breaks = scales::trans_breaks("log10", function(x) 10^x),
+  #  labels = scales::trans_format("log10", scales::math_format(10^.x))
+  # ) +
+  labs(x = "Rank", y="Relative abundance")
+#p_RAC <- p_RAC + annotation_logticks() 
+p_fig_S11a <- p_fig_S11a + facet_wrap(vars(C_number))
+p_fig_S11a
+
+```
+
+### Normalize RADs
+
+RADs of different replicates are hard to compared because they all have different richnesses. The next chunk of code normalizes the RADs by the min richness observed (7ASVs).
+
+```{r}
+nrads <- RADnormalization_matrix(input = abundance_df,max_rank = 7,average_over = 10,
+                                 sample_in_row = TRUE,verbose = FALSE)
+
+nrads_m <- data.frame(nrads$norm_matrix)
+
+nrads_t <- rad_agg[,1:3] %>% 
+  add_column(nrads_m)
+
+nrads_p <-nrads_t %>% 
+  pivot_longer(c(`X1`,`X2`,`X3`,`X4`,`X5`,`X6`,`X7`), names_to = "rank", values_to = "abundance")
+
+nrads_p$rank <- as.numeric(str_sub(nrads_p$rank, -1, -1))
+
+```
+
+### Get an average RAD for each level of resource number and plot them
+
+```{r}
+nrads_p$C_number <- factor(nrads_p$C_number)
+mean_rads <- nrads_p  %>%
+  group_by(rank, C_number) %>% 
+  summarise(mean = mean(abundance),
+            sd = std.error(abundance))
+                                                           
+p_fig_S11c <- ggplot(data=mean_rads , aes(rank, y=mean, group=C_number, color=C_number, fill=C_number))+
+  geom_line(size=1)+
+  geom_ribbon(aes(ymin = mean - sd, ymax = mean + sd), alpha=.2) +
+  geom_smooth(method='lm', se = FALSE, size=0.5, linetype="dashed")+
+  theme(legend.position="none")+
+   scale_y_log10(
+   breaks = scales::trans_breaks("log10", function(x) 10^x),
+   labels = scales::trans_format("log10", scales::math_format(10^.x))
+   ) +
+  #    scale_x_log10(
+  #  breaks = scales::trans_breaks("log10", function(x) 10^x),
+  #  labels = scales::trans_format("log10", scales::math_format(10^.x))
+  # ) +
+  labs(x = "Rank", y="Relative abundance")
+p_fig_S11c
+
+```
+
+### Statistical test to compared average RADs (to be fixed)
+
+```{r}
+d <- dist(x = nrads_m,method = "manhattan")
+mds <- cmdscale(d = d,k = 5,eig = TRUE)
+
+line_cols <- c("#C2294A", "#FA9856", "#FEE08B", "#E6F598", "#94D4A4", "#4075B4")
+sample_classes <- c(richness_data_orderedBYmedium$C_number)
+maxrank <- 7
+
+plot(mds$points,xlab = "First coordinate",ylab = "Second coordinate",pch = 19,
+     cex =1,col = line_cols[sample_classes],
+     main = "")
+
+#add the representative points wit error bar to the previous plot
+a <- representative_point(input = mds$points,ids = which(sample_classes ==1),
+                          col = scales::alpha(line_cols[1],0.7),
+                          plot = TRUE,standard_error_mean = TRUE,pch = 19, cex = 4)
+a <- representative_point(input = mds$points,ids = which(sample_classes == 2),
+                          col = scales::alpha(line_cols[2],0.7),
+                          plot = TRUE,standard_error_mean = TRUE,pch = 19, cex = 4)
+a <- representative_point(input = mds$points,ids = which(sample_classes == 4),
+                          col = scales::alpha(line_cols[3],0.7),
+                          plot = TRUE,standard_error_mean = TRUE,pch = 19, cex = 4)
+a <- representative_point(input = mds$points,ids = which(sample_classes == 8),
+                          col = scales::alpha(line_cols[4],0.7),
+                          plot = TRUE,standard_error_mean = TRUE,pch = 19, cex = 4) 
+a <- representative_point(input = mds$points,ids = which(sample_classes == 15),
+                          col = scales::alpha(line_cols[5],0.7),
+                          plot = TRUE,standard_error_mean = TRUE,pch = 19, cex = 4)
+a <- representative_point(input = mds$points,ids = which(sample_classes == 16),
+                          col = scales::alpha(line_cols[6],0.7),
+                          plot = TRUE,standard_error_mean = TRUE,pch = 19, cex = 4)
+
+```
+
+
+Calculate slopes (log10)
+
+```{r}
+
+doModel <- function(dat) lm(log10(abundance) ~ rank, dat)
+
+getSlope <- function(mod) coef(mod)[2]
+getIntercept <- function(mod) coef(mod)[1]
+
+abundances_media_no0_1 <- filter(abundances_media_no0, rank > 1 ) #change rank to eliminate initial non linear part of the RAD
+
+models <- abundances_media_no0_1 %>% 
+  group_by(rep, medium, C_number) %>%
+  nest %>%
+  mutate(model = map(data, doModel)) %>% 
+  mutate(slope = map(model, getSlope)) %>%
+  mutate(intercept = map(model, getIntercept))
+
+mean_slopes <- group_by(models %>% unnest(slope), C_number) %>% summarise(mean = mean(slope),
+                                                           SE = std.error(slope))
+
+#Get absolute values for slopes
+mean_slopes$mean <- (mean_slopes$mean)*(-1)
+models_p <- models %>% unnest(slope)
+models_p$slope_p <- (models_p$slope)*(-1)  
+
+p_slopes <- ggplot(data=mean_slopes, aes(x=C_number, y=mean, fill=C_number)) +
+  geom_col(alpha=.8) +
+  geom_jitter(data=models_p, size=2, shape=21, aes(x=C_number, y=slope_p, fill=C_number))+
+  geom_errorbar(aes(ymin=mean-SE, ymax=mean+SE), width=0) +
+  theme(
+    #panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position="none"
+  )
+p_slopes
+```
+

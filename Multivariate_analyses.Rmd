@@ -1,0 +1,227 @@
+---
+title: "Uncostrained ordinations"
+output: html_notebook
+---
+
+
+```{r}
+library(phyloseq); packageVersion("phyloseq")
+library(ggplot2); packageVersion("ggplot2")
+library(tidyverse)
+library(vegan)
+library(reshape2)
+library(ggrepel)
+library(RColorBrewer)
+```
+
+
+```{r}
+ps_1_2C_RA <- ps_to_use %>%
+  subset_samples(C_number == 1 | C_number==2) %>%
+  transform_sample_counts(function(x) {x/sum(x)} )
+
+ps_1_2C_RA
+```
+
+Agglomerate at the family level
+
+```{r}
+ps_1_2C_RA_fam <- ps_to_use %>%
+  tax_glom("Family", NArm = TRUE) %>%
+  subset_samples(C_number == 1 | C_number==2) %>%
+  transform_sample_counts(function(x) {x/sum(x)} )
+
+ps_1_2C_RA_fam
+```
+
+
+```{r}
+# Ordinate
+ps_1_2C_RA_pcoa <- ordinate(
+  physeq = ps_1_2C_RA, 
+  method = "PCoA", 
+  distance = "bray"
+)
+
+# Plot 
+p_pCoA_1_2C <- plot_ordination(
+  physeq = ps_1_2C_RA,
+  ordination = ps_1_2C_RA_pcoa,
+  color = "medium",
+  shape = "FC_number",
+  label="medium",
+  title = "PCoA"
+  ) + 
+  scale_color_manual(values = colorRampPalette(brewer.pal(40, "Spectral"))(40)
+  ) +
+  geom_point(aes(color = medium), alpha = 0.7, size = 4) #+
+  # geom_point(colour = "grey90", size = 1.5) 
+  #geom_text_repel(size=2, hjust=0, vjust=0)+
+
+```
+
+#nMDS
+
+```{r}
+set.seed(1)
+
+# Ordinate
+ps_1_2C_RA_nmds <- ordinate(
+  physeq = ps_1_2C_RA_fam, 
+  method = "NMDS", 
+  distance = "bray"
+)
+
+p_nMDS <- plot_ordination(
+  physeq = ps_1_2C_RA_fam,
+  ordination = ps_1_2C_RA_nmds,
+  color = "medium",
+  shape = "FC_number",
+  label="medium",
+  title = "NMDS "
+) + 
+  scale_color_manual(values = colorRampPalette(brewer.pal(40, "Spectral"))(40)
+  ) +
+  geom_point(aes(color = medium), alpha = 0.7, size = 4)# +
+  # geom_point(colour = "grey90", size = 1.5) 
+
+p_nMDS
+```
+
+
+calculate Bray-Curtis dissimilarities
+
+```{r}
+set.seed(1)
+
+bray_mat <- distance(ps_1_2C_RA, method = "bray")  #add binary= TRUE to transform into presence-absence
+mean_bray_medium <- meandist(bray_mat, sample_data(ps_1_2C_RA)$medium)
+summary(mean_bray_medium)
+
+mean_bray_medium [upper.tri(mean_bray_medium )] <- 0
+
+mean_bray_medium_melt <- as_tibble(melt(mean_bray_medium))
+
+mean_bray_medium_melt <- mean_bray_medium_melt %>%
+  filter(value != 0)
+
+mean_bray_medium_melt <- mean_bray_medium_melt %>% unite("compared_media", Var1:Var2, remove = FALSE)
+
+mean_bray_medium_melt <-mean_bray_medium_melt %>%
+  mutate(
+    resources = case_when(
+      Var1 == 43 & Var2 == 1 ~ "gluc_proline",
+      Var1 == 56 & Var2 == 1 ~ "gluc_proline",
+      Var1 == 56 & Var2 == 43 ~ "gluc_proline",
+      Var1 == 48 & Var2 == 2 ~ "maltose_fumar",
+      Var1 == 51 & Var2 == 2 ~ "maltose_fumar",
+      Var1 == 51 & Var2 == 48 ~ "maltose_fumar",
+      Var1 == 49 & Var2 == 3 ~ "sucr_galact",
+      Var1 == 52 & Var2 == 3 ~ "sucr_galact",
+      Var1 == 52 & Var2 == 49 ~ "sucr_galact",
+      Var1 == 54 & Var2 == 4 ~ "sorb_cellulose",
+      Var1 == 57 & Var2 == 4 ~ "sorb_cellulose",
+      Var1 == 57 & Var2 == 54 ~ "sorb_cellulose",
+      Var1 == 8 & Var2 == 44 ~ "fruct_cellob",
+      Var1 == 8 & Var2 == 47 ~ "fruct_cellob",
+      Var1 == 47 & Var2 == 44 ~ "fruct_cellob",
+      Var1 == 9 & Var2 == 46 ~ "mannose_citr",
+      Var1 == 9 & Var2 == 50 ~ "mannose_citr",
+      Var1 == 50 & Var2 == 46 ~ "mannose_citr",
+      Var1 == 45 & Var2 == 10 ~ "xyl_mannitol",
+      Var1 == 53 & Var2 == 10 ~ "xyl_mannitol",
+      Var1 == 53 & Var2 == 45 ~ "xyl_mannitol",
+      Var1 == 55 & Var2 == 11 ~ "glyc_starch",
+      Var1 == 58 & Var2 == 11 ~ "glyc_starch",
+      Var1 == 58 & Var2 == 55 ~ "glyc_starch",
+      
+      Var1 == 45 & Var2 == 15 ~ "xyl-glyc",
+      Var1 == 55 & Var2 == 15 ~ "xyl-glyc",
+      Var1 == 55 & Var2 == 45 ~ "xyl-glyc",
+      Var1 == 46 & Var2 == 16 ~ "mannose_sorb",
+      Var1 == 54 & Var2 == 16 ~ "mannose_sorb",
+      Var1 == 54 & Var2 == 46 ~ "mannose_sorb",
+      Var1 == 43 & Var2 == 17 ~ "gluc_cellob",
+      Var1 == 47 & Var2 == 17 ~ "gluc_cellob",
+      Var1 == 47 & Var2 == 43 ~ "gluc_cellob",
+      Var1 == 44 & Var2 == 18 ~ "fruct_cellulose",
+      Var1 == 57 & Var2 == 18 ~ "fruct_cellulose",
+      Var1 == 57 & Var2 == 44 ~ "fruct_cellulose",
+      Var1 == 53 & Var2 == 22 ~ "mannitol_starch",
+      Var1 == 58 & Var2 == 22 ~ "mannitol_starch",
+      Var1 == 58 & Var2 == 53 ~ "mannitol_starch",
+      Var1 == 51 & Var2 == 23 ~ "fumar_galact",
+      Var1 == 52 & Var2 == 23 ~ "fumar_galact",
+      Var1 == 52 & Var2 == 51 ~ "fumar_galact",
+      Var1 == 48 & Var2 == 24 ~ "maltose_citr",
+      Var1 == 50 & Var2 == 24 ~ "maltose_citr",
+      Var1 == 50 & Var2 == 48 ~ "maltose_citr",
+      Var1 == 49 & Var2 == 25 ~ "sucr_prol",
+      Var1 == 56 & Var2 == 25 ~ "sucr_prol",
+      Var1 == 56 & Var2 == 49 ~ "sucr_prol",
+ 
+      Var1 == 51 & Var2 == 29 ~ "fumar_prol",
+      Var1 == 56 & Var2 == 29 ~ "fumar_prol",
+      Var1 == 56 & Var2 == 51 ~ "fumar_prol",
+      Var1 == 50 & Var2 == 30 ~ "citr_glyc",
+      Var1 == 55 & Var2 == 30 ~ "citr_glyc",
+      Var1 == 55 & Var2 == 50 ~ "citr_glyc",
+      Var1 == 44 & Var2 == 31 ~ "fruct_starch",
+      Var1 == 58 & Var2 == 31 ~ "fruct_starch",
+      Var1 == 58 & Var2 == 44 ~ "fruct_starch",
+      Var1 == 43 & Var2 == 32 ~ "gluc_cellulose",
+      Var1 == 57 & Var2 == 32 ~ "gluc_cellulose",
+      Var1 == 57 & Var2 == 43 ~ "gluc_cellulose",
+      Var1 == 48 & Var2 == 36 ~ "maltose_sucr",
+      Var1 == 49 & Var2 == 36 ~ "maltose_sucr",
+      Var1 == 49 & Var2 == 48 ~ "maltose_sucr",
+      Var1 == 47 & Var2 == 37 ~ "cellob_galact",
+      Var1 == 52 & Var2 == 37 ~ "cellob_galact",
+      Var1 == 52 & Var2 == 47 ~ "cellob_galact",
+      Var1 == 45 & Var2 == 38 ~ "xyl_mannose",
+      Var1 == 46 & Var2 == 38 ~ "xyl_mannose",
+      Var1 == 46 & Var2 == 45 ~ "xyl_mannose",
+      Var1 == 53 & Var2 == 39 ~ "mannitol-sorb",
+      Var1 == 54 & Var2 == 39 ~ "mannitol-sorb",
+      Var1 == 54 & Var2 == 53 ~ "mannitol-sorb",
+      
+      TRUE                      ~ "other"
+    )
+  )
+
+mean_bray_medium_melt <- mean_bray_medium_melt %>%
+  filter(resources != "other")
+
+```
+
+```{r}
+mean_bray_medium_melt <-mean_bray_medium_melt %>%
+  mutate(
+    compare = case_when(
+      Var2 == 1 | Var2 == 2 | Var2 == 3 | Var2 == 4 | Var2 == 10 | Var2 == 11 | Var2 == 15 | Var2 == 16 | Var2 == 17 | Var2 == 18 | Var2 == 22 | Var2 == 23 | Var2 == 24 | Var2 == 25 | Var2 == 29 | Var2 == 30 | Var2 == 31 | Var2 == 32 | Var2 == 36 | Var2 == 37 | Var2 == 38 | Var2 == 39 ~ "with_pair",
+      
+      Var1 == 8 & Var2 == 44 ~ "with_pair",
+      Var1 == 8 & Var2 == 47 ~ "with_pair",
+      Var1 == 9 & Var2 == 46 ~ "with_pair",
+      Var1 == 9 & Var2 == 50 ~ "with_pair",
+      
+      TRUE                      ~ "between_singles"
+    )
+  )
+
+```
+
+
+plot
+
+```{r}
+
+p_bray_1_2 <- ggplot(data=mean_bray_medium_melt, aes(resources, y=value, label= compared_media, shape = compare, color=compare))+
+  geom_point(size=3)+
+  geom_text_repel(size=2, hjust=0, vjust=0)+
+  theme_light()+
+  scale_color_manual(values = c("#FA9856","#4075B4"))+
+  theme(axis.text.x=element_text(angle=60,hjust=1))
+p_bray_1_2
+```
+

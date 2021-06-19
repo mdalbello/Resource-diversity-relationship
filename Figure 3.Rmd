@@ -1,0 +1,93 @@
+---
+title: "Figure 3"
+output: html_notebook
+---
+
+```{r}
+library(ggplot2); packageVersion("ggplot2")
+library(plotrix)
+library(nlme)
+library(RColorBrewer)
+library(tidyverse)
+
+```
+
+We ran a LCR model with all the possible combinations of 16 resources. The crossfeeding matrix is built from the metabolic reactions mapped in KEGG and seeded by the chosen resources (pangenome)
+
+```{r}
+model_data <- read.csv("./Other_data/sim_allcomb.csv", header=T)
+model_tib <- model_data %>% 
+  pivot_longer(c(`Gen`, `Spec`, `Interm`), names_to = "Strategy", values_to = "n")
+
+model_tib
+```
+
+```{r}
+model_means_tb <- model_tib %>%
+                    group_by(Strategy,C_number) %>% 
+                        summarise(mean_n = mean(n), 
+                        SE_n = std.error(n))
+
+model_means_tb <-model_means_tb %>%
+  mutate(Strategy_dummy = case_when(Strategy=="Gen"~"c",
+                            Strategy=="Spec"~"a",
+                            Strategy=="Interm"~"b"
+                            ))
+
+p_strategies_model <- ggplot(data=model_means_tb , aes(C_number, y=mean_n, fill=Strategy_dummy))+
+  geom_col(width=0.8, alpha=0.9)+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(4, "Spectral"))(4))+
+  theme_light()+
+  theme(legend.position="none")+
+  labs(x = "C_number", y="Richness")+
+  ylim(0,60)
+p_strategies_model
+
+```
+```{r}
+scatter_data <- read.csv("./Other_data/scatter.csv", header=T)
+
+scatter_data <- scatter_data %>%
+  mutate(FC_number = factor(C_number))
+
+p_scatter <- ggplot(data=scatter_data , aes(simulation, y=experiment, fill=FC_number))+
+  geom_point(shape = 21, alpha=0.9, size = 3)+
+  theme_light()+
+  geom_abline(aes(intercept=0, slope=1), linetype="dashed", color="black")+
+  theme(legend.position="none")+
+  labs(x = "Richness from Simulations", y="Observed Richness")
+p_scatter
+```
+
+```{r}
+model75_data <- read.csv("./Other_data/sim_75.csv", header=T)
+
+model75_data <- model75_data %>%
+  mutate(FC_number = factor(C_number)) %>%
+  rowwise() %>% 
+  mutate(tot_richness = sum(c(Gen, Spec, Interm)))
+   
+model75_data
+```
+```{r}
+model75_mean_data <- model75_data %>%
+  group_by(C_number, FC_number) %>%
+  summarise(mean_rich = mean(tot_richness),
+            SE_rich = std.error(tot_richness))
+
+sim_lm <- lm(mean_rich ~ C_number, data=model75_mean_data)
+summary(sim_lm)
+
+p_model_lin <- ggplot(data=model75_mean_data, aes(C_number, y=mean_rich, fill= FC_number))+
+  geom_jitter(data=model75_data, aes(C_number, y=tot_richness, fill= FC_number), size=2, shape=25, alpha=.9)+
+  geom_errorbar(aes(ymin=mean_rich-SE_rich, ymax=mean_rich+SE_rich), width=0)+
+  geom_point(size=5, shape=25, alpha=.9)+
+  geom_abline(aes(intercept= 22.70586, slope=2.03112), linetype="dashed")+
+  theme_light()+
+  theme(legend.position="none")+
+  ylim(0,60)+
+  labs(x = "Number of supplied resources", y="Richness from simulations")
+p_model_lin
+
+```
+
