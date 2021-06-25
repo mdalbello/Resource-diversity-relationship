@@ -1,0 +1,669 @@
+---
+title: "Extended Data Figures"
+output: html_notebook
+---
+
+```{r}
+library(ggplot2)
+library(plotrix)
+library(RColorBrewer)
+library(tidyverse)
+library(dplyr)
+library(phyloseq); packageVersion("phyloseq")
+library(gridExtra)
+library(RADanalysis)
+library(purrr)
+library(tidyr)
+library(plotrix)
+library(tidyverse)
+library(microbiome)
+library(ggrepel)
+```
+
+
+
+Run "Get working datasets.rmd"
+
+# Extended Data Figure 1
+
+## The majority of communities reached equilibrium before the end of the experiment.
+Each panel shows the temporal trajectories of the composition of one community at the family level. The most prevalent 37 families are included. The first 16 plots depict communities grown on a single carbon source. The last four plots depict replicated communities grown on a media containing all the 16 carbon sources. The solid black line indicates the observed community richness.
+
+```{r}
+
+families_fac = factor(tax_table(ps_TS_toUSE_RA)[, "Family"])
+colourCount_fam <- length(unique(families_fac))
+```
+
+### Plot community composition
+
+```{r}
+df_TS_1C_a <- df_TS %>%
+  filter(rep == "a" & C_number == 1)
+
+p_TS <- ggplot(df_TS_1C_a, aes(dilution_day, Abundance, fill=Family))+
+  geom_col(position = position_stack(reverse = TRUE))+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(colourCount_fam))+
+  theme_light() +
+  theme(legend.position="none")+
+  facet_wrap(~ medium)
+p_TS
+```
+
+### Calculate richness
+
+```{r}
+ps_TS_1C_a <- subset_samples(ps_TS_toUSE, rep == "a" & C_number == 1)
+
+D0 <- estimate_richness(ps_TS_1C_a,split=TRUE, measures="Observed")
+shannon_Silva <- estimate_richness(ps_TS_1C_a, measures="Shannon")
+D1 <- exp(shannon_Silva)
+simpson_div_Silva <- estimate_richness(ps_TS_1C_a, measures="Simpson")
+D2 <- estimate_richness(ps_TS_1C_a, measures="InvSimpson")
+ACE <- estimate_richness(ps_TS_1C_a, measures="ACE")
+FaithPD <- estimate_richness_custom(ps_TS_1C_a, measures="FaithPD")
+
+TS_diversity_data <- data.frame(sample_data(ps_TS_1C_a), D0 = D0$Observed, D1 = D1$Shannon, D2 = D2$InvSimpson, shannon = shannon_Silva$Shannon, FaithPD = FaithPD$FaithPD)
+
+TS_diversity_tb <- as_tibble(TS_diversity_data)
+```
+
+### Add richness line to bar plot of community structure
+
+```{r}
+df_TS_1C_a_ord <- df_TS_1C_a %>%
+  arrange(medium, dilution_day)
+
+TS_diversity_tb_ord <- TS_diversity_tb %>%
+  arrange(medium, dilution_day)
+
+count_groups <- df_TS_1C_a %>%
+  group_by(medium, dilution_day) %>%
+  summarize(count = n())
+
+#2502
+
+df_TS_1C_a_ord$richness <- rep(c(TS_diversity_tb_ord$D0), each = 2502)
+
+df_TS_1C_a_ord <- df_TS_1C_a_ord%>%
+  mutate(resource = case_when(medium=="43"~"43_glucose",
+                            medium=="44"~"44_fructose",
+                            medium=="45"~"45_xylose",
+                            medium=="46"~"46_mannose",
+                            medium=="47"~"47_cellobiose",
+                            medium=="48"~"48_maltose",
+                            medium=="49"~"49_sucrose",
+                            medium=="50"~"50_citrate",
+                            medium=="51"~"51_fumarate",
+                            medium=="52"~"52_galacturonate",
+                            medium=="53"~"53_mannitol",
+                            medium=="54"~"54_sorbitol",
+                            medium=="55"~"55_glycerol",
+                            medium=="56"~"56_proline",
+                            medium=="57"~"57_cellulose",
+                            medium=="58"~"58_starch"
+                            ))
+```
+```{r}
+
+```
+
+### Plot
+
+```{r}
+scl = 1/(max(df_TS_1C_a_ord$richness))
+
+p_TS <- ggplot(df_TS_1C_a_ord , aes(x = dilution_day))+
+  geom_col(aes(y = Abundance, fill=Family), position = position_stack(reverse = TRUE))+
+  geom_point(aes(y = richness*scl), size = 1)+
+  geom_line(aes(y = richness*scl), size = 0.2)+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(colourCount_fam))+
+  theme_light() +
+  theme(legend.position="none")+
+  scale_y_continuous( name = "Relative Abundance", 
+                     sec.axis = sec_axis(~./scl, name = "Richness"))+
+  facet_wrap(~ resource)
+p_TS
+```
+
+### Add 16-resource communities
+
+```{r}
+df_TS_1_16C <- df_TS %>%
+  filter((C_number == 1 & (rep == "a")) |  (C_number == 16 & (rep == "a"| rep == "b"| rep =="c" | rep == "d")))
+
+ps_TS_1_16C <- ps_TS_toUSE %>%
+  subset_samples((C_number == 1 & (rep == "a")) |  (C_number == 16 & (rep == "a"| rep == "b"| rep =="c" | rep == "d")))
+
+D0 <- estimate_richness(ps_TS_1_16C,split=TRUE, measures="Observed")
+shannon_Silva <- estimate_richness(ps_TS_1_16C, measures="Shannon")
+D1 <- exp(shannon_Silva)
+simpson_div_Silva <- estimate_richness(ps_TS_1_16C, measures="Simpson")
+D2 <- estimate_richness(ps_TS_1_16C, measures="InvSimpson")
+ACE <- estimate_richness(ps_TS_1_16C, measures="ACE")
+FaithPD <- estimate_richness_custom(ps_TS_1_16C, measures="FaithPD")
+
+TS_diversity_data <- data.frame(sample_data(ps_TS_1_16C), D0 = D0$Observed, D1 = D1$Shannon, D2 = D2$InvSimpson, shannon = shannon_Silva$Shannon, FaithPD = FaithPD$FaithPD)
+TS_diversity_tb <- as_tibble(TS_diversity_data)
+
+df_TS_1_16C_ord <- df_TS_1_16C %>%
+  arrange(rep, medium, dilution_day)
+
+TS_diversity_tb_ord <- TS_diversity_tb %>%
+  arrange(rep, medium, dilution_day)
+
+```
+
+
+### Plot final figure
+
+```{r}
+count_groups <- df_TS_1_16C %>%
+  group_by(rep, medium, dilution_day) %>%
+  summarize(count = n())
+#2502
+df_TS_1_16C_ord$richness <- rep(c(TS_diversity_tb_ord$D0), each = 2502)
+
+scl = 1/(max(df_TS_1_16C_ord$richness))
+
+p_ED_Fig1 <- ggplot(df_TS_1_16C_ord, aes(x = dilution_day))+
+  geom_col(aes(y = Abundance, fill=Family), position = position_stack(reverse = TRUE))+
+  #geom_point(aes(y = richness*scl), size = 1)+
+  geom_line(aes(y = richness*scl), size = 0.2)+
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(colourCount_fam))+
+  theme_light() +
+  theme(legend.position="bottom")+
+  scale_y_continuous( name = "Relative Abundance", 
+                     sec.axis = sec_axis(~./scl, name = "Richness"))+
+  facet_wrap(rep ~ medium, ncol =4 )
+p_ED_Fig1
+```
+
+# Extended Data Figure 2
+
+## Single carbon sources support microbial assemblages spanning a wide phylogenetic diversity.
+The pool of ASVs found across all media supplied with single resources is phylogenetically diverse, encompassing 7 classes, indicated by colored lines on the right side of the plot (black lines indicate ASVs that could not be identified at any taxonomical level except the Domain, Bacteria). Families are indicated on the left side of the phylogenetic tree. Colored tiles indicate the media in which the ASV is found (for each carbon source, there are three replicated microcosms for a total of 48 communities.) Carbon sources are ordered based on the average richness they support.
+
+
+
+# Extended Data Figure 3
+
+## All single resources supported multispecies communities, but richness varied with the identity of the resource.
+Bars indicate, for each carbon source, the number of ASVs (mean ± SEM, N = 3). 
+
+```{r}
+
+meanRich_tib %>%
+  filter (C_number == 1)%>%
+  ggplot (aes(x=medium_id, y=mean_rich, fill=medium)) +
+  geom_bar(data=meanRich_1C, aes(x=medium_id, y=mean_rich, fill=medium), stat="identity", alpha=.8, width=.4) +
+  geom_errorbar(data=meanRich_1C, aes(x=medium_id, y=mean_rich, fill=medium, ymin=mean_rich-SE_rich, ymax=mean_rich+SE_rich), width=0, position=position_identity()) +
+  scale_fill_manual(values = colorRampPalette(brewer.pal(21, "Spectral"))(16)) +
+  theme_light() +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position="none"
+  )
+  
+```
+
+
+# Extended Data Figure 4
+
+## Richness of two-resource communities is approximately the average richness of constituent single-resource communities.
+A. Observed richness of each two-resource community is best approximated by the average richness of constituent single resources, compared to the maximum and the union. Both the average error for the three predictions, calculated from the absolute values of predicted minus observed richness, and the ratio between predicted and observed richness are shown.  B. Average richness of two-resource communities does not differ from the average richness of single-resource communities (boxplots with median and 95 % confidence interval; number of 1-resource media = 16, number of 2-resource media = 24; each dot is obtained from the mean of 3 replicates, SEM are not shown for clarity). The color of the dots indicates the supporting resource(s).
+
+```{r}
+#Load data if you have not run "Get_working_datasets" 
+
+dat_predictions_2C <- read.table("./Other_data/dat_predictions_2C.txt", header=T)
+
+dat_average_predictions_2C <- aggregate(predictions~type*C_number, mean, data=dat_predictions_2C)  
+dat_std.er_predictions_2C <- aggregate(predictions~type*C_number, std.error, data=dat_predictions_2C) 
+dat_average_predictions_2C$SE <- dat_std.er_predictions_2C$predictions
+
+dat_predictions_2C_bis <- dat_predictions_2C[dat_predictions_2C$C_number!=1,]
+dat_average_predictions_2C_bis <- dat_average_predictions_2C[dat_average_predictions_2C$C_number!=1,]
+
+
+p_predictions_bis <- ggplot(data=dat_average_predictions_2C_bis, aes(x=predictions, y=type, fill=type, shape=type))+
+  geom_jitter(data=dat_predictions_2C_bis ,aes(x=predictions, y=type, colour = type), size=2, width = 0.2)+
+  geom_errorbarh(aes(xmin=predictions-SE, xmax=predictions+SE), height = .2, position=position_identity())+
+  geom_point(size=4, alpha=0.8)+
+  scale_shape_manual(values=c("max"=22, "mean"=24, "observed"=21, "sum"=23, "union"=25))
+p_predictions_bis
+```
+
+Predictions divided by observed values
+
+```{r}
+std_mean_predictions = (dat_predictions_2C_bis[dat_predictions_2C_bis$type=="mean",]$predictions)/(dat_predictions_2C_bis[dat_predictions_2C_bis$type=="observed",]$predictions)
+
+std_max_predictions = (dat_predictions_2C_bis[dat_predictions_2C_bis$type=="max",]$predictions)/(dat_predictions_2C_bis[dat_predictions_2C_bis$type=="observed",]$predictions)
+
+std_sum_predictions = (dat_predictions_2C_bis[dat_predictions_2C_bis$type=="sum",]$predictions)/(dat_predictions_2C_bis[dat_predictions_2C_bis$type=="observed",]$predictions)
+
+std_union_predictions = (dat_predictions_2C_bis[dat_predictions_2C_bis$type=="union",]$predictions)/(dat_predictions_2C_bis[dat_predictions_2C_bis$type=="observed",]$predictions)
+
+dat_std_predictions_2C <- dat_predictions_2C_bis[dat_predictions_2C_bis$type!="observed",]
+dat_std_predictions_2C$std.predictions <- c(std_mean_predictions,std_sum_predictions,std_max_predictions,std_union_predictions)
+
+dat_average_std_predictions_2C <- aggregate(std.predictions~type*C_number, mean, data=dat_std_predictions_2C) 
+dat_average_std_predictions_2C_SE <- aggregate(std.predictions~type*C_number, std.error, data=dat_std_predictions_2C) 
+dat_average_std_predictions_2C$SE <- dat_average_std_predictions_2C_SE$std.predictions
+
+panel_a2 <- ggplot(data=dat_average_std_predictions_2C, aes(x=std.predictions, y=type, fill=type, shape=type))+
+  geom_jitter(data=dat_std_predictions_2C ,aes(x=std.predictions, y=type, colour = type), size=2, width = 0.2)+
+  geom_errorbarh(aes(xmin=std.predictions-SE, xmax=std.predictions+SE), height = .2, position=position_identity())+
+  geom_point(size=4, alpha=0.8)+
+  scale_shape_manual(values=c("max"=22, "mean"=24, "observed"=21, "sum"=23, "union"=25))
+panel_a2
+
+```
+
+
+Compute error for each prediction
+
+```{r}
+err_mean_predictions = abs((dat_predictions_2C_bis[dat_predictions_2C_bis$type=="mean",]$predictions)-(dat_predictions_2C_bis[dat_predictions_2C_bis$type=="observed",]$predictions))
+
+err_max_predictions = abs((dat_predictions_2C_bis[dat_predictions_2C_bis$type=="max",]$predictions)-(dat_predictions_2C_bis[dat_predictions_2C_bis$type=="observed",]$predictions))
+
+err_sum_predictions = abs((dat_predictions_2C_bis[dat_predictions_2C_bis$type=="sum",]$predictions)-(dat_predictions_2C_bis[dat_predictions_2C_bis$type=="observed",]$predictions))
+
+err_union_predictions = abs((dat_predictions_2C_bis[dat_predictions_2C_bis$type=="union",]$predictions)-(dat_predictions_2C_bis[dat_predictions_2C_bis$type=="observed",]$predictions))
+
+dat_error_predictions_2C <- dat_predictions_2C_bis[dat_predictions_2C_bis$type!="observed",]
+dat_error_predictions_2C$err.predictions <-c(err_mean_predictions,err_sum_predictions,err_max_predictions,err_union_predictions)
+
+dat_average_error_predictions_2C <- aggregate(err.predictions~type*C_number, mean, data=dat_error_predictions_2C) 
+dat_average_error_predictions_2C_SE <- aggregate(err.predictions~type*C_number, std.error, data=dat_error_predictions_2C) 
+dat_average_error_predictions_2C$SE <- dat_average_error_predictions_2C_SE$err.predictions
+
+panel_a1 <- ggplot(data=dat_average_error_predictions_2C, aes(x=type, y=err.predictions, fill=type)) +
+  geom_bar(stat="identity", alpha=.9, width=.4) +
+  geom_errorbar(aes(ymin=err.predictions-SE, ymax=err.predictions+SE), width=0, position=position_identity()) +
+  theme(
+    #panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position="none"
+  )
+panel_a1
+```
+ 
+```{r}
+
+# Load data if you have not run "Get_working_datasets"
+
+diversity_data <- read.csv("Diversity_data.csv", header=T)
+diversity_tib <- as_tibble(diversity_data)
+
+diversity_tib$medium <- factor(diversity_tib$medium)
+diversity_tib$FC_number <- factor(diversity_tib$FC_number)
+
+meanRich_tib <- diversity_tib %>%
+   group_by(medium, FC_number, C_number) %>%
+   summarise(mean_rich = mean(D0),
+             SE_rich = std.error(D0))
+
+panel_b <- meanRich_tib %>%
+  filter (C_number == 1 | C_number == 2) %>%
+  ggplot(aes(FC_number, y=mean_rich, group=FC_number, label= medium))+
+  geom_boxplot(alpha=0.6)+
+  geom_point(size=2)+
+  geom_text_repel(size=2, hjust=1, vjust=2)+
+  ylim(0,45)
+panel_b
+```
+
+
+# Extended Data Figure 5
+
+## The estimated number of metabolites for combinations of carbon sources increases fast and tends to saturate with the number of supplied resources.
+The number of metabolites has been computed from KEGG and MetaCyc databases (see Methods).  Large colored dots indicate the average number of metabolites for each number of supplied resources (mean ± SEM) while small grey dots indicate the average richness in each media containing a combination of resources (16 for single-resource, 24 for two-resource, 12 for four-resource, six for eight-resource, 16 for 15-resource and one for 16-resource combinations). Error bars are omitted for clarity. The dotted line was obtained by fitting a spline to the points.
+
+
+```{r}
+KEGG_data <- read.table("./Other_data/Kegg_data.txt", header=T)
+
+plot_KEGG_df <- KEGG_data %>% 
+  group_by(num_cs) %>%
+  summarise(mean_met = mean(met_number),
+            SE_met = std.error(met_number))
+
+ED_fig5 <- ggplot(data=plot_KEGG_df, aes(x=num_cs, y=mean_met))+
+  geom_smooth(aes(x=num_cs, y=mean_met), method = lm, formula = y ~ splines::bs(x, 5), se = FALSE, color="black")+
+  geom_jitter(data=KEGG_data, aes(x=num_cs, y=met_number), size=1, shape=21, fill="gray", width=0.1)+
+  geom_point(size=4, shape=21)+
+  geom_errorbar(aes(x=num_cs, y=mean_met, ymin=mean_met-SE_met, ymax=mean_met+SE_met))+
+  #geom_point(size=4, shape=22)+
+  theme_bw()+
+  theme(legend.position="none")+
+  ylim(0,105)
+ED_fig5
+
+```
+
+
+# Extended Data Figure 6
+
+## The observed linear trend is sufficiently robust to the exclusion of low-abundance ASVs, coarse-graining at the family level, and the index used to measure microbial community diversity.
+A. Richness was calculated as the number of ASVs after the exclusion of those with relative abundance lower than 0.1%. B. Richness was calculated as the number of unique families in the media. C, D. The increase in diversity, measured as Shannon Entropy and Inverse Simpson Index, with the number of carbon sources can still be approximated by a line. These indices give progressively more weight to abundant species, accounting, in this way, for the evenness of the communities. In each panel, large colored dots indicate the mean ± SEM while small grey dots indicate the average richness in each media containing a combination of resources (16 for single-resource, 24 for two-resource, 12 for four-resource, six for eight-resource, 16 for 15-resource and one for 16-resource combinations). Error bars are omitted for clarity. 
+
+###Load data if you have not run "Get_working_datasets"
+
+```{r}
+diversity_data <- read.csv("Diversity_data.csv", header=T)
+diversity_tib <- as_tibble(diversity_data)
+```
+
+### Get slopes and intercepts data to plot
+
+```{r}
+lm_rich_0.1 <- lm(D0_0.1 ~ C_number, data=diversity_tib)
+summary(lm_rich_0.1)
+
+lm_rich_fam <- lm(D0_family ~ C_number, data=diversity_tib)
+summary(lm_rich_fam)
+
+
+lm_rich_D1 <- lm(D1 ~ C_number, data=diversity_tib)
+summary(lm_rich_D1)
+
+lm_rich_D2 <- lm(D2 ~ C_number, data=diversity_tib)
+summary(lm_rich_D2)
+
+plot_richnesses_df <- diversity_tib %>% 
+  group_by(C_number) %>%
+  summarise(mean_D1 = mean(D1),
+            SE_D1 = std.error(D1),
+            mean_D2 = mean(D2),
+            SE_D2 = std.error(D2),
+            mean_D0_0.1 = mean(D0_0.1),
+            SE_D0_0.1 = std.error(D0_0.1),
+            mean_D0_fam = mean(D0_family),
+            SE_D0_fam = std.error(D0_family))
+```
+
+### Plot ED_Fig2
+
+```{r}
+p_panelA <- ggplot(data=diversity_tib, aes(x=C_number, y=D0_0.1))+
+  geom_abline(slope=0.99952, intercept =11.59307, color="black")+
+  geom_jitter(size=1, shape=21, fill="gray", width=0.1)+
+  geom_point(data=plot_richnesses_df , aes(x=C_number, y=mean_D0_0.1), size=4, shape=21)+
+  geom_errorbar(data=plot_richnesses_df , aes(x=C_number, y=mean_D0_0.1, ymin=mean_D0_0.1-SE_D0_0.1, ymax=mean_D0_0.1+SE_D0_0.1))+
+  #geom_point(size=4, shape=22)+
+  theme_bw()+
+  theme(legend.position="none")#+
+  #ylim(0,32)
+#p_panelA
+
+p_panelB <- ggplot(data=diversity_tib, aes(x=C_number, y=D0_family))+
+  geom_abline(slope=0.42183, intercept =10.43812, color="black")+
+  geom_jitter(size=1, shape=21, fill="gray", width=0.1)+
+  geom_point(data=plot_richnesses_df , aes(x=C_number, y=mean_D0_fam), size=4, shape=21)+
+  geom_errorbar(data=plot_richnesses_df , aes(x=C_number, y=mean_D0_fam, ymin=mean_D0_fam-SE_D0_fam, ymax=mean_D0_fam+SE_D0_fam))+
+  #geom_point(size=4, shape=22)+
+  theme_bw()+
+  theme(legend.position="none")#+
+  #ylim(0,22)
+#p_panelB
+
+p_panelC <- ggplot(data=diversity_tib, aes(x=C_number, y=D1))+
+  geom_abline(slope=0.31107, intercept =3.17260, color="black")+
+  geom_jitter(size=1, shape=21, fill="gray", width=0.1)+
+  geom_point(data=plot_richnesses_df , aes(x=C_number, y=mean_D1), size=4, shape=21)+
+  geom_errorbar(data=plot_richnesses_df , aes(x=C_number, y=mean_D1, ymin=mean_D1-SE_D1, ymax=mean_D1+SE_D1))+
+  #geom_point(size=4, shape=22)+
+  theme_bw()+
+  theme(legend.position="none")
+
+p_panelD <- ggplot(data=diversity_tib, aes(x=C_number, y=D2))+
+  geom_abline(slope=0.14559, intercept =2.33945, color="black")+
+  geom_jitter(size=1, shape=21, fill="gray", width=0.1)+
+  geom_point(data=plot_richnesses_df , aes(x=C_number, y=mean_D2), size=4, shape=21)+
+  geom_errorbar(data=plot_richnesses_df , aes(x=C_number, y=mean_D2, ymin=mean_D2-SE_D2, ymax=mean_D2+SE_D2))+
+  #geom_point(size=4, shape=22)+
+  theme_bw()+
+  theme(legend.position="none")
+
+grid.arrange(p_panelA, p_panelB, p_panelC, p_panelD, nrow = 2)
+```
+
+
+# Extended Data Figure 7
+
+## The evenness of the microbial communities increases with the number of supplied carbon sources.
+A. Log-linear rank abundance distributions (RADs) are shown for all the experimental microbial microcosms (48 for single-resource, 72 for two-resource, 36 for four-resource, 18 for eight-resource, 16 for 15-resource and nine for 16-resource combinations) together with the fitted regression lines (black dashed lines). Going from one to 16 resources, RADs exhibit heavier tails. B. The average absolute value of the slope (bars indicate mean ± SEM across replicates with the same number of supplied resources, while jittered dots represent the slope for each individual replicate) decreases with the number of supplied resources. C. Changes in evenness are independent from changes in richness, as revealed by RADs normalized for richness (mean RADs, dashed colored lines, ± SD, shaded colored ribbon, for each number of supplied resources). 
+
+### Get RADs
+
+This requires calculating the rank for each replicate based on the abundance of the observed ASVs. It also implies getting rid of unobserved ASVs in each replicate.
+
+```{r}
+abundance_df <- t(abundances(ps_to_use_RA))
+rad_df <- data.frame(cbind(sample_data(ps_to_use_RA),abundance_df))
+
+rad_agg <-rad_df %>% 
+    group_by(medium,rep,C_number) %>%
+    summarise(across(starts_with('ASV'), mean))
+
+rad_agg_no0 <- rad_agg[, colSums(rad_agg != 0) > 0]  #619 ASVs
+rad_agg_no0$FC_number <- factor(rad_agg_no0$C_number)
+
+#rac_sorted <-apply(rac_df_agg_no0[,4:622],1,sort,decreasing=T)
+abundance_sorted <-c(apply(rad_agg_no0[,4:622],1,sort,decreasing=T))
+
+abundances_media <- data.frame(abundance = abundance_sorted, rank = rep(c(1:619), 227), medium = rep(rad_agg_no0$medium,each=619), rep = rep(rad_agg_no0$rep,each=619), C_number = rep(rad_agg_no0$C_number,each=619))
+abundances_media$rep.bis <- paste(abundances_media$medium,abundances_media$rep)
+abundances_media_no0 = abundances_media[abundances_media$abundance!=0,]
+
+
+ED_Fig7_panel_a <- ggplot(data=abundances_media_no0, aes(rank, y=abundance, group=rep.bis, color=C_number))+
+  geom_line( alpha=.7)+
+  theme(legend.position="none")+
+  geom_smooth(method='lm', se = FALSE, size=0.1, color="black", linetype="dashed")+
+   scale_y_log10(
+   breaks = scales::trans_breaks("log10", function(x) 10^x),
+   labels = scales::trans_format("log10", scales::math_format(10^.x))
+   ) +
+  #  scale_x_log10(
+  #  breaks = scales::trans_breaks("log10", function(x) 10^x),
+  #  labels = scales::trans_format("log10", scales::math_format(10^.x))
+  # ) +
+  labs(x = "Rank", y="Relative abundance")
+#p_RAC <- p_RAC + annotation_logticks() 
+ED_Fig7_panel_a <- ED_Fig7_panel_a + facet_wrap(vars(C_number))
+ED_Fig7_panel_a
+
+```
+
+### Normalize RADs
+
+RADs of different replicates are hard to compared because they all have different richnesses. The next chunk of code normalizes the RADs by the min richness observed (7ASVs).
+
+```{r}
+abundance_df_1 <- t(abundances(ps_to_use))
+nrads <- RADnormalization_matrix(input = abundance_df_1,max_rank = 7,average_over = 10,
+                                 sample_in_row = TRUE,verbose = FALSE)
+
+nrads_m <- data.frame(nrads$norm_matrix)
+
+nrads_t <- rad_agg[,1:3] %>% 
+  add_column(nrads_m)
+
+nrads_p <-nrads_t %>% 
+  pivot_longer(c(`X1`,`X2`,`X3`,`X4`,`X5`,`X6`,`X7`), names_to = "rank", values_to = "abundance")
+
+nrads_p$rank <- as.numeric(str_sub(nrads_p$rank, -1, -1))
+
+```
+
+### Get an average RAD for each level of resource number and plot them
+
+```{r}
+nrads_p$C_number <- factor(nrads_p$C_number)
+mean_rads <- nrads_p  %>%
+  group_by(rank, C_number) %>% 
+  summarise(mean = mean(abundance),
+            sd = std.error(abundance))
+                                                           
+ED_Fig7_panel_c <- ggplot(data=mean_rads , aes(rank, y=mean, group=C_number, color=C_number, fill=C_number))+
+  geom_line(size=1)+
+  geom_ribbon(aes(ymin = mean - sd, ymax = mean + sd), alpha=.2) +
+  geom_smooth(method='lm', se = FALSE, size=0.5, linetype="dashed")+
+  theme(legend.position="none")+
+   scale_y_log10(
+   breaks = scales::trans_breaks("log10", function(x) 10^x),
+   labels = scales::trans_format("log10", scales::math_format(10^.x))
+   ) +
+  #    scale_x_log10(
+  #  breaks = scales::trans_breaks("log10", function(x) 10^x),
+  #  labels = scales::trans_format("log10", scales::math_format(10^.x))
+  # ) +
+  labs(x = "Rank", y="Relative abundance")
+ED_Fig7_panel_c
+
+```
+
+
+Calculate slopes (log10)
+
+```{r}
+
+doModel <- function(dat) lm(log10(abundance) ~ rank, dat)
+
+getSlope <- function(mod) coef(mod)[2]
+getIntercept <- function(mod) coef(mod)[1]
+
+abundances_media_no0_1 <- filter(abundances_media_no0, rank > 1 ) #change rank to eliminate initial non linear part of the RAD
+
+models <- abundances_media_no0_1 %>% 
+  group_by(rep, medium, C_number) %>%
+  nest %>%
+  mutate(model = map(data, doModel)) %>% 
+  mutate(slope = map(model, getSlope)) %>%
+  mutate(intercept = map(model, getIntercept))
+
+mean_slopes <- group_by(models %>% unnest(slope), C_number) %>% summarise(mean = mean(slope),
+                                                           SE = std.error(slope))
+
+#Get absolute values for slopes
+mean_slopes$mean <- (mean_slopes$mean)*(-1)
+models_p <- models %>% unnest(slope)
+models_p$slope_p <- (models_p$slope)*(-1)  
+
+ED_Fig7_panel_b <- ggplot(data=mean_slopes, aes(x=C_number, y=mean, fill=C_number)) +
+  geom_col(alpha=.8) +
+  geom_jitter(data=models_p, size=2, shape=21, aes(x=C_number, y=slope_p, fill=C_number))+
+  geom_errorbar(aes(ymin=mean-SE, ymax=mean+SE), width=0) +
+  theme(
+    #panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position="none"
+  )
+ED_Fig7_panel_b
+```
+
+# Extended Data Figure 8
+
+## Resource occupancy of the 275 ASVs found in media containing a single carbon source.
+The histogram shows the number of single resources in which each ASV is found. Bars are colored depending on whether the ASV has been classified as a generalist (pink), a specialist (teal) or an intermediate (beige). The families to which ASVs belong are reported.
+
+```{r}
+
+df_RA_1C <- df_ALL %>%
+  filter(C_number==1)
+
+abundance_threshold = 0  #change to 0.001 to leave out low abund ASVs
+
+sumASV_Abund_1C <- aggregate(Abundance ~ OTU, sum, na.rm=TRUE, data=df_RA_1C) 
+sumASV_Abund_1C_no0 <- sumASV_Abund_1C[sumASV_Abund_1C$Abundance> abundance_threshold,]  
+speciesTOkeep <- sumASV_Abund_1C_no0$OTU
+
+ASV1C_df <- filter(df_RA_1C, OTU %in% speciesTOkeep)
+ASV1C_df $presence <- ASV1C_df $Abundance
+ASV1C_df $presence[ASV1C_df $presence > 0] <- 1
+
+occupancy_df_tmp<- aggregate(presence ~ medium*OTU, sum, na.rm=TRUE, data=ASV1C_df ) 
+occupancy_df_tmp$presence[occupancy_df_tmp$presence > 0] <- 1 
+
+occupancy_df<- aggregate(presence ~ OTU, sum, na.rm=TRUE, data=occupancy_df_tmp)
+
+# use phylogenetic tree to order ASVs
+ps_1C <- ps_to_use %>%
+  subset_samples(C_number==1)
+
+ps_1C <- prune_taxa(speciesTOkeep,ps_to_use)
+
+order_ASV <- tree_layout(phy_tree(ps_1C), ladderize=TRUE)
+order_ASV_T <- order_ASV$edgeDT[order(y),]
+myorder_ASV <- order_ASV_T$OTU   # 176 if abundance_threshold = 0.001
+myorder_ASV <- myorder_ASV[!is.na(myorder_ASV)]
+
+
+ED_Fig8 <- occupancy_df %>%
+  mutate(OTU = fct_relevel(OTU,
+                           myorder_ASV)) %>%
+  ggplot(aes(x = OTU, y = presence))+ 
+  geom_bar(stat = "identity", fill="#439BB5")+
+  theme_light()+
+  coord_flip()
+ED_Fig8
+
+```
+
+
+
+# Extended Data Figure 9
+
+##The fraction of habitat generalist decreases while the fraction of habitat specialists increases with community richness.
+A. Percentage fraction of habitat generalists (mean, N=3) as a function of community richness (mean ± SEM, N=3). B. Percentage fraction of habitat specialists (mean, N=3) as a function of community richness (mean ± SEM, N=3). Fitted linear regression lines (black, dashed) are shown.
+
+
+# Extended Data Figure 10
+
+##Richness from simulations grows modestly with the number of resources.
+Richness obtained from simulations of the consumer-resource model with cross-feeding (blue triangles, mean ± SEM, N = 16 for single-resource, 24 for two-resource, 12 for four-resource, six for eight-resource, 16 for 15-resource and 1 for 16-resource combinations) as a linear function of the number of available resources (solid blue line, intercept = 22.7, slope = 2). Grey jittered triangles indicate the richness of communities grown on a particular resource combination.
+
+
+Load "sim_75.csv" was obtained using or run "".
+
+```{r}
+
+model75_data <- read.csv("./Other_data/sim_75.csv", header=T)
+
+model75_data <- model75_data %>%
+  mutate(FC_number = factor(C_number)) %>%
+  rowwise() %>% 
+  mutate(tot_richness = sum(c(Gen, Spec, Interm)))
+   
+model75_data
+```
+```{r}
+model75_mean_data <- model75_data %>%
+  group_by(C_number, FC_number) %>%
+  summarise(mean_rich = mean(tot_richness),
+            SE_rich = std.error(tot_richness))
+
+sim_lm <- lm(mean_rich ~ C_number, data=model75_mean_data)
+summary(sim_lm)
+
+ED_Fig10 <- ggplot(data=model75_mean_data, aes(C_number, y=mean_rich, fill= FC_number))+
+  geom_jitter(data=model75_data, aes(C_number, y=tot_richness, fill= FC_number), size=2, shape=25, alpha=.9)+
+  geom_errorbar(aes(ymin=mean_rich-SE_rich, ymax=mean_rich+SE_rich), width=0)+
+  geom_point(size=5, shape=25, alpha=.9)+
+  geom_abline(aes(intercept= 22.70586, slope=2.03112), linetype="dashed")+
+  theme_light()+
+  theme(legend.position="none")+
+  ylim(0,60)+
+  labs(x = "Number of supplied resources", y="Richness from simulations")
+ED_Fig10
+
+```
+

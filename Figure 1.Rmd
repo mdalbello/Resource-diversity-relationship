@@ -22,6 +22,8 @@ library(reshape2)
 diversity_data <- read.csv("Diversity_data.csv", header=T)
 diversity_tib <- as_tibble(diversity_data)
 
+diversity_tib$medium <- factor(diversity_tib$medium)
+diversity_tib$FC_number <- factor(diversity_tib$FC_number)
 ```
 
 
@@ -94,9 +96,9 @@ KEGG_data <- read.table("./Other_data/Kegg_data.txt", header=T)
 KEGG_data_1C <- filter(KEGG_data, num_cs == 1)
 
 meanRich_1C <- filter(meanRich_tib, C_number == 1)
-#meanRich_1C$n_met <- KEGG_data_1C$met_number
+meanRich_1C$n_met <- KEGG_data_1C$met_number
 #meanRich_1C$n_met_fba <- c(26,36,50,22,40,48,34,14,15,24,45,53,47,14,29,41)
-n_met <- c(41,38,43,41,46,38,39,27,27,39,39,42,34,33,50,44)  # Curated number: need to fix this!
+#n_met <- c(41,38,43,41,46,38,39,27,27,39,39,42,34,33,50,44)  # Curated number
 
 p_fig1_B <- ggplot(data=meanRich_1C, aes(n_met, y=mean_rich, fill=medium))+
   geom_errorbar(aes(ymin=mean_rich-SE_rich, ymax=mean_rich+SE_rich))+
@@ -117,13 +119,13 @@ pearson
 ```
 
 ```{r}
-met_LM <- lm(mean_rich ~ 0 + n_met_fba, data=meanRich_1C)
+met_LM <- lm(mean_rich ~ 0 + n_met, data=meanRich_1C)
 summary(met_LM)
 ```
 
 ## How observed richness in constituent single resources compares to the observed richness in two-resource communities and predictions calculated as the union (sum without overlapping ASVs) or the maximum  of the richness in constituent singles. 
 ### Fig. 1 Panel C.
-Having found large numbers of coexisting species in single resources, we expected that community diversity would increase rapidly if more resources were provided (union and max predictions).
+Having found large numbers of coexisting species in single resources, we expected that community diversity would increase rapidly if more resources were provided (union and max predictions). Numbers for union and max predictions were obtained through "".
 
 Show that union and max predictions overestimate richness in 2-resource media: an example (glucose + hydroxyproline)
 
@@ -173,92 +175,14 @@ p_fig1_D
 
 ```
 
-### Extended data 
-Get slopes and intercepts
+###Get slope and intercept
 
 ```{r}
 lm_rich <- lm(D0 ~ C_number, data=diversity_tib)
 summary(lm_rich)
 
-
-lm_rich_0.1 <- lm(D0_0.1 ~ C_number, data=diversity_tib)
-summary(lm_rich_0.1)
-
-lm_rich_fam <- lm(D0_family ~ C_number, data=diversity_tib)
-summary(lm_rich_fam)
-
-
-lm_rich_D1 <- lm(D1 ~ C_number, data=diversity_tib)
-summary(lm_rich_D1)
-
-lm_rich_D2 <- lm(D2 ~ C_number, data=diversity_tib)
-summary(lm_rich_D2)
 ```
 
-Plot
-
-```{r}
-plot_richnesses_df <- diversity_tib %>% 
-  group_by(C_number) %>%
-  summarise(mean_D1 = mean(D1),
-            SE_D1 = std.error(D1),
-            mean_D2 = mean(D2),
-            SE_D2 = std.error(D2),
-            mean_D0_0.1 = mean(D0_0.1),
-            SE_D0_0.1 = std.error(D0_0.1),
-            mean_D0_fam = mean(D0_family),
-            SE_D0_fam = std.error(D0_family))
-
-```
-
-
-```{r}
-library(gridExtra)
-
-p_figS10A <- ggplot(data=diversity_tib, aes(x=C_number, y=D0_0.1))+
-  geom_abline(slope=0.99952, intercept =11.59307, color="black")+
-  geom_jitter(size=1, shape=21, fill="gray", width=0.1)+
-  geom_point(data=plot_richnesses_df , aes(x=C_number, y=mean_D0_0.1), size=4, shape=21)+
-  geom_errorbar(data=plot_richnesses_df , aes(x=C_number, y=mean_D0_0.1, ymin=mean_D0_0.1-SE_D0_0.1, ymax=mean_D0_0.1+SE_D0_0.1))+
-  #geom_point(size=4, shape=22)+
-  theme_bw()+
-  theme(legend.position="none")#+
-  #ylim(0,32)
-p_figS10A
-
-p_figS10B <- ggplot(data=diversity_tib, aes(x=C_number, y=D0_family))+
-  geom_abline(slope=0.42183, intercept =10.43812, color="black")+
-  geom_jitter(size=1, shape=21, fill="gray", width=0.1)+
-  geom_point(data=plot_richnesses_df , aes(x=C_number, y=mean_D0_fam), size=4, shape=21)+
-  geom_errorbar(data=plot_richnesses_df , aes(x=C_number, y=mean_D0_fam, ymin=mean_D0_fam-SE_D0_fam, ymax=mean_D0_fam+SE_D0_fam))+
-  #geom_point(size=4, shape=22)+
-  theme_bw()+
-  theme(legend.position="none")#+
-  #ylim(0,22)
-p_figS10B
-
-grid.arrange(p_figS10A, p_figS10B, nrow = 1)
-
-p_figS10C <- ggplot(data=diversity_tib, aes(x=C_number, y=D1))+
-  geom_abline(slope=0.31107, intercept =3.17260, color="black")+
-  geom_jitter(size=1, shape=21, fill="gray", width=0.1)+
-  geom_point(data=plot_richnesses_df , aes(x=C_number, y=mean_D1), size=4, shape=21)+
-  geom_errorbar(data=plot_richnesses_df , aes(x=C_number, y=mean_D1, ymin=mean_D1-SE_D1, ymax=mean_D1+SE_D1))+
-  #geom_point(size=4, shape=22)+
-  theme_bw()+
-  theme(legend.position="none")
-
-p_figS10D <- ggplot(data=diversity_tib, aes(x=C_number, y=D2))+
-  geom_abline(slope=0.14559, intercept =2.33945, color="black")+
-  geom_jitter(size=1, shape=21, fill="gray", width=0.1)+
-  geom_point(data=plot_richnesses_df , aes(x=C_number, y=mean_D2), size=4, shape=21)+
-  geom_errorbar(data=plot_richnesses_df , aes(x=C_number, y=mean_D2, ymin=mean_D2-SE_D2, ymax=mean_D2+SE_D2))+
-  #geom_point(size=4, shape=22)+
-  theme_bw()+
-  theme(legend.position="none")
-
-grid.arrange(p_figS10C, p_figS10D, nrow = 1)
-```
 
 
 # Multivariate regression

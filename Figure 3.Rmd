@@ -14,6 +14,8 @@ library(tidyverse)
 
 We ran a LCR model with all the possible combinations of 16 resources. The crossfeeding matrix is built from the metabolic reactions mapped in KEGG and seeded by the chosen resources (pangenome)
 
+"sim_allcomb.csv" was generated using "".
+
 ```{r}
 model_data <- read.csv("./Other_data/sim_allcomb.csv", header=T)
 model_tib <- model_data %>% 
@@ -57,37 +59,5 @@ p_scatter <- ggplot(data=scatter_data , aes(simulation, y=experiment, fill=FC_nu
   theme(legend.position="none")+
   labs(x = "Richness from Simulations", y="Observed Richness")
 p_scatter
-```
-
-```{r}
-model75_data <- read.csv("./Other_data/sim_75.csv", header=T)
-
-model75_data <- model75_data %>%
-  mutate(FC_number = factor(C_number)) %>%
-  rowwise() %>% 
-  mutate(tot_richness = sum(c(Gen, Spec, Interm)))
-   
-model75_data
-```
-```{r}
-model75_mean_data <- model75_data %>%
-  group_by(C_number, FC_number) %>%
-  summarise(mean_rich = mean(tot_richness),
-            SE_rich = std.error(tot_richness))
-
-sim_lm <- lm(mean_rich ~ C_number, data=model75_mean_data)
-summary(sim_lm)
-
-p_model_lin <- ggplot(data=model75_mean_data, aes(C_number, y=mean_rich, fill= FC_number))+
-  geom_jitter(data=model75_data, aes(C_number, y=tot_richness, fill= FC_number), size=2, shape=25, alpha=.9)+
-  geom_errorbar(aes(ymin=mean_rich-SE_rich, ymax=mean_rich+SE_rich), width=0)+
-  geom_point(size=5, shape=25, alpha=.9)+
-  geom_abline(aes(intercept= 22.70586, slope=2.03112), linetype="dashed")+
-  theme_light()+
-  theme(legend.position="none")+
-  ylim(0,60)+
-  labs(x = "Number of supplied resources", y="Richness from simulations")
-p_model_lin
-
 ```
 

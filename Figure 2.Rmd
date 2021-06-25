@@ -451,8 +451,10 @@ p_fig2_D
 
 ```
 
-### Plot preference score (need Hyun's code)
+### Plot preference score 
 To verify the expectation that generalists and specialists also exhibit contrasting resource preferences in multi-resource environments, we calculated a resource-specificity score. For each ASV present in a single resource (target resource), the resource specificity score was calculated as the difference between the number of multi-resource media containing the target resource in which the ASV was found and the number of media not containing the target resource in which the ASV was found, divided by the total number of media in which the ASV was found. The score ranged from 1, indicating that the ASV was present only when the target resource was provided in a combination, to -1, implying that, although the ASV was found in the single resource, it was always absent when that resource was supplied with others. A score of 0 indicated that an ASV showed no specificity for that resource 
+
+The data "Preference_score_ASVs.txt" was generated using "" (Hyunseok Lee).
 
 ```{r}
 pref_score_ASV_df <- read.table("./Other_data/Preference_score_ASVs.txt", header=T)

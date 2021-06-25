@@ -40,7 +40,22 @@ vignettes/*.pdf
 # HTML
 *.html
 
+# Ignore pdfs
+*.pdf
+
 # Ignore explicit files
 AllData_day7.csv
 All_data_withsamples.csv
 Time_series_data.csv
+boh.Rmd
+Scarti.Rmd
+RAD_analysis_FigS11.Rmd
+Time_series_Fig.S3.Rmd
+Water_&_M9.Rmd
+Phylogenetic_diversity.Rmd
+New_things_OD.Rmd
+Multivariate_analyses.Rmd
+
+handling_sequencing_data.Rproj
+
+

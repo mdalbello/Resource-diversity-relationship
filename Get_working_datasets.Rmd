@@ -113,6 +113,11 @@ ps_to_use = subset_samples(ps_to_use, how_many != "M9")
 
 
 ### Calculate various diversity measures using built-in phyloseq and custom functions
+D0 = richness
+D1 = Shannon Entropy
+D2 = Inverse Simpson Index
+D0_0.1 = Richness after the exclusion of ASVs with relative abundance lower than 0.1%.
+
 
 ```{r Estimate diversity measures custom}
 estimate_richness_custom <- function (physeq, split = TRUE, measures = NULL) 

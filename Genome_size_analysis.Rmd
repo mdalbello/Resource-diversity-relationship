@@ -99,7 +99,7 @@ gene_dat_1C <- gene_dat_1C %>%
 full_flat_dat <- left_join(df_ALL_RA_1C, gene_dat_1C, by = "OTU")
 full_flat_dat
 ```
-Forse c'ho preso con la funzione
+Calculate Jaccard dissimilarity
 
 ```{r}
 calculate_mean_jaccard <- function(dat) mean(philentropy::distance(dat, method = "jaccard", use.row.names = TRUE, as.dist.obj = TRUE))
